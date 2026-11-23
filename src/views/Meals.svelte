@@ -2,10 +2,11 @@
   import { onMount } from 'svelte'
   import PersonaPicker from '../components/PersonaPicker.svelte'
   import { app } from '../lib/state.svelte'
-  import { bestRating, isRated, loadMeals, meals, persona, ratedCount, ratedParts, sortedMeals } from '../lib/meals.svelte'
+  import { bestRating, isRated, loadMeals, meals, persona, ratedCount, ratedParts, rateables, ratingFor, sortedMeals } from '../lib/meals.svelte'
 
   let query = $state('')
-  let filter = $state<'all' | 'unrated'>('all')
+  let filter = $state<'all' | 'unrated' | 'want'>('all')
+  const wants = (m: (typeof meals.list)[number]): number => rateables(m).filter((x) => ratingFor(m, x.key, persona.value)?.want).length
 
   onMount(() => void loadMeals(true))
 
@@ -23,6 +24,7 @@
   const shown = $derived(
     sortedMeals(meals.list).filter((m) => {
       if (filter === 'unrated' && isRated(m, persona.value)) return false
+      if (filter === 'want' && !wants(m)) return false
       const q = query.trim().toLowerCase()
       return !q || m.name.toLowerCase().includes(q) || m.aliases.some((a) => a.includes(q)) || m.tags.some((t) => t.toLowerCase().includes(q))
     }),
@@ -59,6 +61,7 @@
   <div class="filters" role="radiogroup" aria-label="Show">
     <button type="button" role="radio" aria-checked={filter === 'all'} onclick={() => (filter = 'all')}>All</button>
     <button type="button" role="radio" aria-checked={filter === 'unrated'} onclick={() => (filter = 'unrated')}>Unrated</button>
+    <button type="button" role="radio" aria-checked={filter === 'want'} onclick={() => (filter = 'want')}>Want to make</button>
   </div>
 </div>
 
@@ -73,16 +76,19 @@
     {#each shown as meal, i (meal.id)}
       {@const r = bestRating(meal, persona.value)}
       {@const parts = ratedParts(meal, persona.value)}
+      {@const w = wants(meal)}
       {#if meal.family && shown[i - 1]?.family !== meal.family}
         <li class="section"><h2>{meal.family}</h2></li>
       {/if}
       <li class:in-family={Boolean(meal.family)}>
         <a class="card row" href={`#/meals/${encodeURIComponent(meal.id)}`}>
           <span class="name">{meal.name}</span>
-          <span class="meta muted">{meal.cooked ? `made ${meal.cooked}×` : 'not in history'}{parts[1] > 1 ? ` · ${parts[0]}/${parts[1]} variations` : ''}</span>
+          <span class="meta muted">{meal.cooked ? `made ${meal.cooked}×` : 'not in history'}{parts[1] > 1 ? ` · ${parts[0]}/${parts[1]} variations` : ''}{w && r ? ` · ${w} to try` : ''}</span>
           <span class="score" aria-label={r ? `rated ${r.thumbs === 1 ? 'thumbs up' : r.thumbs === -1 ? 'thumbs down' : ''} ${r.stars ? `${r.stars} stars` : ''}` : 'not rated'}>
             {#if r}
               {r.thumbs === 1 ? '👍' : r.thumbs === -1 ? '👎' : ''}{r.stars ? ` ${'★'.repeat(r.stars)}` : ''}
+            {:else if w}
+              <span class="want">Want to make</span>
             {:else}
               <span class="dot" aria-hidden="true"></span>
             {/if}
@@ -218,6 +224,14 @@
     grid-area: score;
     color: #c98a1e;
     white-space: nowrap;
+  }
+  .want {
+    font-size: 0.8rem;
+    font-weight: 700;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    background: #f7e7c3;
+    color: #5b3d05;
   }
   .dot {
     display: inline-block;

@@ -39,7 +39,7 @@ const env = {
   RATE_LIMIT: 'off', AI_MOCK: '1', OPENCODE_API_KEY: '', GARMIN: 'off', ACCESS_LOG: 'off', BACKUPS: 'off', CRONOMETER_SYNC_HOUR: '99',
 }
 const server = spawn(process.execPath, [path.join(HEALTHLOG, 'server', 'index.js')], { env, stdio: 'ignore' })
-const edge = spawn(EDGE, ['--headless=new', `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${profileDir}`, '--no-first-run', 'about:blank'], { stdio: 'ignore' })
+const edge = spawn(EDGE, [...(process.getuid?.() === 0 ? ['--no-sandbox'] : []), '--headless=new', `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${profileDir}`, '--no-first-run', 'about:blank'], { stdio: 'ignore' })
 
 async function http(method, route, token, body) {
   const res = await fetch(`${BASE}${route}`, {
@@ -212,7 +212,25 @@ try {
   ok('rate: 11 rows fit without scrolling', (await fits()) <= 0, String(await fits()))
   ok('phone: no horizontal overflow on Rate', (await overflow()) <= 0, String(await overflow()))
   await shot('6b-rate-risotto.png')
-  await evaluate(`[...document.querySelectorAll('button')].find((b) => b.innerText.startsWith('Skip')).click(); return true`)
+  const footer = () => text('.meal footer .btn-primary')
+  ok('rate: nothing answered offers Skip', /Skip/.test(await footer()))
+  await rateRow('Risotto, Blue cheese')
+  ok('rate: part rated says Next, not Skip', await until(`/Next/.test(document.querySelector('.meal footer .btn-primary')?.innerText ?? '')`))
+  const rowOption = (label, row, opt) => evaluate(`
+    document.querySelector('button[aria-label="More for ${row}: want to make, never had"]').click()
+    await new Promise((r) => setTimeout(r, 50))
+    ;[...document.querySelectorAll('.rows .opt')].find((b) => b.innerText.includes(${JSON.stringify(opt)})).click(); return true`)
+  await rowOption('Risotto', 'Chorizo', 'Want to make')
+  ok('want: the row says Want to make', await until(`[...document.querySelectorAll('.want-pill')].some((b) => /Chorizo/.test(b.getAttribute('aria-label')))`))
+  ok('want: counts as answered', /2\/11/.test(await text('#meal-name .count')), await text('#meal-name .count'))
+  await rowOption('Risotto', 'Pumpkin', 'Never had')
+  ok('never had: the row leaves the list', await until(`document.querySelectorAll('.rows .label').length === 10`))
+  ok('never had: count drops to 2/10', /2\/10/.test(await text('#meal-name .count')), await text('#meal-name .count'))
+  ok('never had: offered back', /1 never had/.test(await text('.hidden-list')))
+  ok('rate: still fits with the extra row', (await fits()) <= 0, String(await fits()))
+  ok('phone: no horizontal overflow with the row menu', (await overflow()) <= 0, String(await overflow()))
+  await shot('6c-rate-want-never.png')
+  await evaluate(`[...document.querySelectorAll('button')].find((b) => b.innerText.startsWith('Next')).click(); return true`)
   ok('rate: a single meal gets the big control', await until(`(document.querySelector('#meal-name')?.innerText ?? '').startsWith('Dahl') && document.querySelector('.single')`, 4000))
   // One tap: 3+ stars fills in thumbs up.
   await click('button[aria-label="Dahl: 3 stars"]')
@@ -225,6 +243,15 @@ try {
   await click('button[aria-label="Dahl: 3 stars"]')
   await evaluate(`[...document.querySelectorAll('.effort button')].find((b) => b.innerText === 'Low').click(); return true`)
   ok('rate: the section comes next, together', await until(`(document.querySelector('#meal-name')?.innerText ?? '').startsWith('Pulled pork sandwiches')`, 4000))
+  ok('rate: moving on part rated keeps the streak', /🔥3/.test(await text('.progress-row')), await text('.progress-row'))
+  await shot('6d-rate-single.png')
+  await evaluate(`[...document.querySelectorAll('.single-actions button')].find((b) => /Never had/.test(b.innerText)).click(); return true`)
+  ok('remove meal: gone, on to the next', await until(`(document.querySelector('#meal-name')?.innerText ?? '').startsWith('Pulled pork soup')`, 4000))
+  ok('remove meal: undo offered', /Removed Pulled pork sandwiches/.test(await text('.toast')))
+  await click('.toast button')
+  ok('remove meal: undo brings it back', await until(`(document.querySelector('#meal-name')?.innerText ?? '').startsWith('Pulled pork sandwiches')`, 4000))
+  await evaluate(`[...document.querySelectorAll('.single-actions button')].find((b) => /want to make/.test(b.innerText)).click(); return true`)
+  ok('want: a whole meal we have not had moves on with no effort', await until(`(document.querySelector('#meal-name')?.innerText ?? '').startsWith('Pulled pork soup')`, 4000))
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true })
 
   const saved = (await http('GET', '/api/planner/meals', sam.token)).meals
@@ -232,6 +259,10 @@ try {
   const cab = saved.find((m) => m.name === 'Dirty cabbage')
   ok('rate: each variation saved as Both', fried.ratings.filter((r) => r.ratedAs === 'both' && r.optionId && !r.optionId.includes('+')).length === 2)
   ok('rate: every combination saved', cab.ratings.filter((r) => r.ratedAs === 'both' && r.optionId?.includes('+')).length === 6)
+  const ris = saved.find((m) => m.name === 'Risotto')
+  ok('saved: want to make', ris.ratings.some((r) => r.want && ris.options.find((o) => o.id === r.optionId)?.name === 'Chorizo'))
+  ok('saved: never had hidden for the household', ris.hidden.length === 1 && ris.options.find((o) => o.id === ris.hidden[0])?.name === 'Pumpkin')
+  ok('saved: the removed meal is back', saved.some((m) => m.name === 'Pulled pork sandwiches' && m.ratings.some((r) => r.want)))
 
   // Detail: rate an option as Chloe, accept a tag, send a note
   await evaluate(`location.hash = '#/meals/${fried.id}'; return true`)

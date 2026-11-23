@@ -101,8 +101,8 @@ export const api = {
 
   updateMeal(
     id: string,
-    patch: Partial<Pick<Meal, 'tags' | 'suggestedTags' | 'effort' | 'tips' | 'neverSuggest'>>,
-  ): Promise<Ok & { meal: Meal }> {
+    patch: Partial<Pick<Meal, 'tags' | 'suggestedTags' | 'effort' | 'tips' | 'neverSuggest'>> & { archived?: boolean },
+  ): Promise<Ok & { meal: Meal | null }> {
     return request(`/planner/meals/${encodeURIComponent(id)}`, { method: 'PUT', body: patch })
   },
 
@@ -112,8 +112,13 @@ export const api = {
     ratedAs: RatedAs
     thumbs: -1 | 1 | null
     stars: number | null
+    want?: boolean
   }): Promise<Ok & { rating: Rating | null }> {
     return request('/planner/ratings', { method: 'PUT', body })
+  },
+
+  setHidden(mealId: string, optionId: string, hidden: boolean): Promise<Ok & { hidden: string[] }> {
+    return request(`/planner/meals/${encodeURIComponent(mealId)}/hidden`, { method: 'PUT', body: { optionId, hidden } })
   },
 
   addNote(mealId: string, body: string): Promise<Ok & { note: MealNote }> {

@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import RateRows from '../components/RateRows.svelte'
-  import { isRated, loadMeals, meals, milestone, nextUnrated, persona, ratedCount, ratedParts, saveMeal } from '../lib/meals.svelte'
+  import { isRated, isStarted, loadMeals, meals, milestone, nextUnrated, persona, ratedCount, ratedParts, removeMeal, restoreMeal, saveMeal } from '../lib/meals.svelte'
+  import type { Meal } from '../lib/types'
   import { app } from '../lib/state.svelte'
 
   let skipped = $state(new Set<string>())
@@ -11,6 +12,9 @@
   let error = $state('')
   let advancing = $state(false)
   let currentId = $state<string | null>(null)
+  let passed = $state(new Set<string>()) // part-answered and moved on: not a skip, not back this round
+  let removed = $state<Meal | null>(null) // for undo
+  let removedTimer = 0
 
   onMount(() => void loadMeals())
 
@@ -22,7 +26,7 @@
   const asName = $derived(persona.value === 'both' ? 'Both' : app.household?.members.find((m) => m.id === persona.value)?.name ?? 'Both')
 
   $effect(() => {
-    if (meals.loaded && !current) currentId = nextUnrated(meals.list, persona.value, skipped)?.id ?? null
+    if (meals.loaded && !current) currentId = nextUnrated(meals.list, persona.value, held())?.id ?? null
   })
   // Switching persona starts their own queue.
   let lastPersona = persona.value
@@ -30,15 +34,18 @@
     if (persona.value !== lastPersona) {
       lastPersona = persona.value
       skipped = new Set()
+      passed = new Set()
       streak = 0
-      currentId = nextUnrated(meals.list, persona.value, skipped)?.id ?? null
+      currentId = nextUnrated(meals.list, persona.value, held())?.id ?? null
     }
   })
+
+  const held = (): Set<string> => new Set([...skipped, ...passed])
 
   function advance(): void {
     advancing = false
     error = ''
-    currentId = nextUnrated(meals.list, persona.value, skipped)?.id ?? null
+    currentId = nextUnrated(meals.list, persona.value, held())?.id ?? null
   }
 
   // After each tap: a meal with every variation rated scores and moves on.
@@ -62,13 +69,43 @@
     }
   }
 
+  // Next: rated what we've had, moving on. Skip: nothing answered yet.
   function next(): void {
     if (!current) return
     if (!isRated(current, persona.value)) {
-      skipped = new Set([...skipped, current.id])
-      streak = 0
+      if (isStarted(current, persona.value)) passed = new Set([...passed, current.id])
+      else {
+        skipped = new Set([...skipped, current.id])
+        streak = 0
+      }
     }
     advance()
+  }
+
+  // Never had it: off the list, with a few seconds to undo.
+  async function remove(meal: Meal): Promise<void> {
+    error = ''
+    try {
+      await removeMeal(meal)
+      removed = meal
+      window.clearTimeout(removedTimer)
+      removedTimer = window.setTimeout(() => (removed = null), 6000)
+      advance()
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e)
+    }
+  }
+  async function undoRemove(): Promise<void> {
+    const meal = removed
+    if (!meal) return
+    removed = null
+    window.clearTimeout(removedTimer)
+    try {
+      await restoreMeal(meal)
+      currentId = meal.id
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e)
+    }
   }
 </script>
 
@@ -89,8 +126,8 @@
     <div class="card finished">
       <p class="big">🎉</p>
       <h1>{done === total ? 'All rated!' : 'Nothing left in this round'}</h1>
-      <p class="muted">{done === total ? `${total} meals, every variation.` : `You skipped ${skipped.size}. Come back to them any time.`}</p>
-      {#if skipped.size}<button class="btn" type="button" onclick={() => { skipped = new Set(); advance() }}>Go through the skipped ones</button>{/if}
+      <p class="muted">{done === total ? `${total} meals, every variation.` : [skipped.size ? `You skipped ${skipped.size}.` : '', passed.size ? `${passed.size} part rated.` : '', 'Come back to them any time.'].filter(Boolean).join(' ')}</p>
+      {#if skipped.size || passed.size}<button class="btn" type="button" onclick={() => { skipped = new Set(); passed = new Set(); advance() }}>Go through the rest</button>{/if}
       <a class="btn btn-primary" href="#/meals">Back to meals</a>
     </div>
   {:else}
@@ -103,17 +140,24 @@
             <button type="button" role="radio" aria-checked={current.effort === value} onclick={() => void setEffort(value as 1 | 2 | 3)}>{label}</button>
           {/each}
         </div>
-        <RateRows meal={current} ratedAs={persona.value} onrated={onRated} onerror={(m) => (error = m)} />
+        <RateRows meal={current} ratedAs={persona.value} onrated={onRated} onerror={(m) => (error = m)} onremove={(m) => void remove(m)} />
         {#if error}<p class="error" role="alert">{error}</p>{/if}
         <footer>
           <a class="detail muted" href={`#/meals/${encodeURIComponent(current.id)}`}>Tags & notes</a>
-          <button class="btn btn-primary" type="button" onclick={next}>{isRated(current, persona.value) ? 'Next ›' : 'Skip ›'}</button>
+          <button class="btn btn-primary" type="button" onclick={next}>{isStarted(current, persona.value) ? 'Next ›' : 'Skip ›'}</button>
         </footer>
         {#key pop}{#if pop}<span class="plus" aria-hidden="true">+1</span>{/if}{/key}
       </article>
     {/key}
   {/if}
 </div>
+
+{#if removed}
+  <div class="toast" role="status">
+    <span>Removed {removed.name}</span>
+    <button type="button" onclick={() => void undoRemove()}>Undo</button>
+  </div>
+{/if}
 
 {#if celebrate}
   <div class="celebrate" role="status" aria-live="polite">
@@ -303,6 +347,36 @@
       transform: rotate(calc(var(--i) * 25.7deg)) translateY(-90px);
       opacity: 0;
     }
+  }
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(1rem + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    max-width: calc(100vw - 2rem);
+    padding: 0.6rem 0.6rem 0.6rem 1rem;
+    border-radius: 999px;
+    background: var(--text);
+    color: var(--bg);
+    font-size: 0.9rem;
+    box-shadow: 0 6px 20px rgb(0 0 0 / 0.2);
+  }
+  .toast span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .toast button {
+    border: none;
+    background: none;
+    color: inherit;
+    font-weight: 800;
+    padding: 0.3rem 0.6rem;
+    cursor: pointer;
   }
   @media (prefers-reduced-motion: reduce) {
     .meal,

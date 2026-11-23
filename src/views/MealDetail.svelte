@@ -2,7 +2,8 @@
   import { onMount } from 'svelte'
   import PersonaPicker from '../components/PersonaPicker.svelte'
   import RateRows from '../components/RateRows.svelte'
-  import { addNote, loadMeals, meals, persona, ratedParts, saveMeal, sortedMeals } from '../lib/meals.svelte'
+  import { addNote, loadMeals, meals, persona, ratedParts, removeMeal, saveMeal, sortedMeals } from '../lib/meals.svelte'
+  import type { Meal } from '../lib/types'
   import { app } from '../lib/state.svelte'
 
   let { id }: { id: string } = $props()
@@ -29,6 +30,14 @@
     } catch (e) {
       error = e instanceof Error ? e.message : String(e)
     }
+  }
+
+  function remove(m: Meal): void {
+    if (!window.confirm(`Remove ${m.name} from the list? Its history and ratings are kept.`)) return
+    void run(async () => {
+      await removeMeal(m)
+      window.location.hash = '#/meals'
+    })
   }
 
   function setEffort(e: 1 | 2 | 3): void {
@@ -87,7 +96,7 @@
       <PersonaPicker />
     </div>
     {#if ratedParts(meal, persona.value)[1] > 1}<p class="muted small">{ratedParts(meal, persona.value)[0]} of {ratedParts(meal, persona.value)[1]} variations rated</p>{/if}
-    <RateRows {meal} ratedAs={persona.value} onerror={(m) => (error = m)} />
+    <RateRows {meal} ratedAs={persona.value} onerror={(m) => (error = m)} onremove={remove} />
   </section>
 
   <section class="card block" aria-labelledby="effort-title">

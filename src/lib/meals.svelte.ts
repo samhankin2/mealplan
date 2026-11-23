@@ -77,10 +77,25 @@ export interface Rateable {
 }
 
 /**
+ * The variations and combinations still on a meal's list: every one, less
+ * those we've taken off because we've never had them.
+ */
+export function rateables(meal: Meal): Rateable[] {
+  const hidden = new Set(meal.hidden ?? [])
+  return allRateables(meal).filter((x) => x.key === null || !hidden.has(x.key))
+}
+
+/** The variations taken off the list, to put back. */
+export function hiddenRateables(meal: Meal): Rateable[] {
+  const hidden = new Set(meal.hidden ?? [])
+  return allRateables(meal).filter((x) => x.key !== null && hidden.has(x.key))
+}
+
+/**
  * Every variation and every combination of a meal. No options: the meal.
  * One axis: each option. Two axes: every pairing (style first).
  */
-export function rateables(meal: Meal): Rateable[] {
+export function allRateables(meal: Meal): Rateable[] {
   const groups = axes(meal)
   if (groups.length === 0) return [{ key: null, label: meal.name }]
   // Style-like axes read first: "Cajun · Kangaroo".
@@ -92,27 +107,43 @@ export function rateables(meal: Meal): Rateable[] {
   return combos.map((c) => ({ key: [...c.ids].sort().join('+'), label: c.names.join(' · ') }))
 }
 
-const complete = (r: Rating | undefined): boolean => Boolean(r && r.thumbs !== null && r.stars !== null)
+const scored = (r: Rating | undefined): boolean => Boolean(r && r.thumbs !== null && r.stars !== null)
+/** Answered: scored, or marked "want to make". */
+export const answered = (r: Rating | undefined): boolean => Boolean(r && (r.want || scored(r)))
 
 /**
- * Done for this persona: every variation / combination has thumbs and stars,
- * and the meal has an effort (shared by the household, set on the parent meal).
+ * Done for this persona: every variation / combination on the list is scored
+ * (thumbs and stars) or marked "want to make", and, once anything has been
+ * eaten, the meal has an effort (shared by the household, set on the meal).
  */
 export function isRated(meal: Meal, ratedAs: RatedAs): boolean {
-  return meal.effort !== null && rateables(meal).every((x) => complete(ratingFor(meal, x.key, ratedAs)))
+  const rows = rateables(meal).map((x) => ratingFor(meal, x.key, ratedAs))
+  if (!rows.every(answered)) return false
+  return meal.effort !== null || !rows.some(scored)
+}
+
+/** This persona has answered at least one variation of the meal. */
+export function isStarted(meal: Meal, ratedAs: RatedAs): boolean {
+  return rateables(meal).some((x) => answered(ratingFor(meal, x.key, ratedAs)))
+}
+
+/** Every variation this persona answered is "want to make". */
+export function isWanted(meal: Meal, ratedAs: RatedAs): boolean {
+  const rows = rateables(meal).map((x) => ratingFor(meal, x.key, ratedAs))
+  return rows.some((r) => r?.want) && rows.every((r) => !r || r.want)
 }
 
 /** [done, total] variations rated by this persona for one meal. */
 export function ratedParts(meal: Meal, ratedAs: RatedAs): [number, number] {
   const all = rateables(meal)
-  return [all.filter((x) => complete(ratingFor(meal, x.key, ratedAs))).length, all.length]
+  return [all.filter((x) => answered(ratingFor(meal, x.key, ratedAs))).length, all.length]
 }
 
 /** The best rating this persona gave any variation (for list summaries). */
 export function bestRating(meal: Meal, ratedAs: RatedAs): Rating | undefined {
   const keys = new Set(rateables(meal).map((x) => x.key))
   return meal.ratings
-    .filter((r) => r.ratedAs === ratedAs && keys.has(r.optionId ?? null))
+    .filter((r) => r.ratedAs === ratedAs && !r.want && keys.has(r.optionId ?? null))
     .sort((a, b) => (b.stars ?? 0) - (a.stars ?? 0) || (b.thumbs ?? 0) - (a.thumbs ?? 0))[0]
 }
 
@@ -156,13 +187,14 @@ export async function rate(
   mealId: string,
   optionId: string | null,
   ratedAs: RatedAs,
-  next: { thumbs: -1 | 1 | null; stars: number | null },
+  next: { thumbs: -1 | 1 | null; stars: number | null; want?: boolean },
 ): Promise<void> {
   const meal = mealById(mealId)
   if (!meal) return
   const before = meal.ratings.map((r) => ({ ...r }))
   const others = meal.ratings.filter((r) => !((r.optionId ?? null) === optionId && r.ratedAs === ratedAs))
-  meal.ratings = next.thumbs === null && next.stars === null ? others : [...others, { optionId, ratedAs, ...next }]
+  const empty = next.thumbs === null && next.stars === null && !next.want
+  meal.ratings = empty ? others : [...others, { optionId, ratedAs, ...next, want: Boolean(next.want) }]
   try {
     const { rating } = await api.setRating({ dishId: mealId, optionId, ratedAs, ...next })
     // ratedAs 'me' comes back as an id; keep the stored key consistent.
@@ -190,6 +222,36 @@ export async function saveMeal(
     Object.assign(meal, before)
     throw e
   }
+}
+
+/** Take a variation off the meal's list for the household ("never had it"), or put it back. */
+export async function setHidden(mealId: string, key: string, hidden: boolean): Promise<void> {
+  const meal = mealById(mealId)
+  if (!meal) return
+  const before = meal.hidden ?? []
+  meal.hidden = hidden ? [...new Set([...before, key])] : before.filter((k) => k !== key)
+  try {
+    meal.hidden = (await api.setHidden(mealId, key, hidden)).hidden
+  } catch (e) {
+    meal.hidden = before
+    throw e
+  }
+}
+
+/** Remove a whole meal from the list (history and ratings are kept), or bring it back. */
+export async function removeMeal(meal: Meal): Promise<void> {
+  const before = meals.list
+  meals.list = meals.list.filter((m) => m.id !== meal.id)
+  try {
+    await api.updateMeal(meal.id, { archived: true })
+  } catch (e) {
+    meals.list = before
+    throw e
+  }
+}
+export async function restoreMeal(meal: Meal): Promise<void> {
+  const { meal: saved } = await api.updateMeal(meal.id, { archived: false })
+  if (!meals.list.some((m) => m.id === meal.id)) meals.list = [...meals.list, saved ?? meal]
 }
 
 export async function addNote(mealId: string, body: string): Promise<void> {

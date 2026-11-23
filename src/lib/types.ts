@@ -33,6 +33,7 @@ export interface Rating {
   ratedAs: RatedAs
   thumbs: -1 | 1 | null
   stars: number | null
+  want?: boolean // not had yet, want to make it (no thumbs or stars)
 }
 
 export interface MealNote {
@@ -59,6 +60,7 @@ export interface Meal {
   cooked: number
   lastCooked: Day | null
   ratings: Rating[]
+  hidden: string[] // variation / combination keys taken off the list ("never had it")
   notes: MealNote[]
 }
 
