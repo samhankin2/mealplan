@@ -1,5 +1,5 @@
 import { getToken } from './auth'
-import type { Household, Partner, User } from './types'
+import type { Household, Meal, MealNote, Partner, RatedAs, Rating, User } from './types'
 
 declare global {
   interface Window {
@@ -93,5 +93,30 @@ export const api = {
 
   setPartner(email: string): Promise<Ok & { partner: Partner | null }> {
     return request('/partner', { method: 'PUT', body: { email } })
+  },
+
+  meals(options?: RequestOptions): Promise<Ok & { meals: Meal[] }> {
+    return request('/planner/meals', {}, options)
+  },
+
+  updateMeal(
+    id: string,
+    patch: Partial<Pick<Meal, 'tags' | 'suggestedTags' | 'effort' | 'tips' | 'neverSuggest'>>,
+  ): Promise<Ok & { meal: Meal }> {
+    return request(`/planner/meals/${encodeURIComponent(id)}`, { method: 'PUT', body: patch })
+  },
+
+  setRating(body: {
+    dishId: string
+    optionId: string | null
+    ratedAs: RatedAs
+    thumbs: -1 | 1 | null
+    stars: number | null
+  }): Promise<Ok & { rating: Rating | null }> {
+    return request('/planner/ratings', { method: 'PUT', body })
+  },
+
+  addNote(mealId: string, body: string): Promise<Ok & { note: MealNote }> {
+    return request(`/planner/meals/${encodeURIComponent(mealId)}/notes`, { method: 'POST', body: { body } })
   },
 }

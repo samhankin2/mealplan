@@ -76,7 +76,8 @@ async function until(expr, ms = 8000) {
 const type = (selector, value) => evaluate(`
   const el = document.querySelector(${JSON.stringify(selector)})
   if (!el) throw new Error('no input ' + ${JSON.stringify(selector)})
-  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(value)})
+  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
+  Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)})
   el.dispatchEvent(new Event('input', { bubbles: true })); return true`)
 const click = (selector) => evaluate(`document.querySelector(${JSON.stringify(selector)}).click(); return true`)
 const text = (selector) => evaluate(`return document.querySelector(${JSON.stringify(selector)})?.innerText ?? ''`)
@@ -153,6 +154,63 @@ try {
   ok('week: Chloe signed in via the shared token', await until(`/This week/.test(document.querySelector('#week-title')?.innerText ?? '')`))
   ok('week: no solo note once linked', !(await evaluate(`return Boolean(document.querySelector('.note'))`)))
   await shot('4-week-chloe.png')
+
+  /* ---------- Meals: import, quick-fire rating, detail ---------- */
+  const draft = {
+    dishes: [
+      { name: 'Fried rice', options: { Protein: ['Prawn', 'Tofu'] }, aliases: [], suggestedTags: ['rice', 'quick'] },
+      { name: 'Risotto', options: { Style: ['Blue cheese', 'Miso'] }, aliases: [], suggestedTags: ['Italian'] },
+      { name: 'Dahl', options: {}, aliases: ['Dhal'], suggestedTags: ['curry', 'vegetarian'] },
+    ],
+    weeks: [{ source: 'qa', week: 1, entries: [
+      { day: 'Mon', raw: 'Fried rice', dish: 'Fried rice' }, { day: 'Tue', raw: 'Fried rice prawn', dish: 'Fried rice', options: { Protein: 'Prawn' } },
+      { day: 'Wed', raw: 'Risotto', dish: 'Risotto' },
+    ] }],
+  }
+  const imp = spawnSync(process.execPath, [path.join(HEALTHLOG, 'server', 'cli.js'), 'planner', 'import', '--email', 'sam@example.com', '-'], { env, encoding: 'utf8', input: JSON.stringify(draft) })
+  ok('meals: draft imported', imp.status === 0, imp.stdout + imp.stderr)
+
+  await signInAs(sam.token, '#/meals')
+  ok('meals: list shows imported meals, most made first', await until(`document.querySelectorAll('.list .name').length === 3`) && (await evaluate(`return document.querySelector('.list .name').innerText`)) === 'Fried rice')
+  ok('meals: progress starts at 0/3', /0\/3/.test(await text('.progress-row')))
+  await shot('5-meals.png')
+  await evaluate(`document.querySelector('a.start').click(); return true`)
+  ok('rate: first card is the most made meal', await until(`document.querySelector('#meal-name')?.innerText === 'Fried rice'`))
+  await click('button[aria-label="Fried rice: make again"]')
+  await click('button[aria-label="Fried rice: 4 stars"]')
+  ok('rate: thumbs + stars advance to the next meal', await until(`document.querySelector('#meal-name')?.innerText === 'Risotto'`, 4000))
+  ok('rate: progress 1/3', /1\/3/.test(await text('.progress-row')))
+  await shot('6-rate.png')
+  await click('button[aria-label="Risotto: make again"]')
+  await click('button[aria-label="Risotto: 5 stars"]')
+  ok('rate: streak shows after two in a row', await until(`/🔥 2/.test(document.querySelector('.progress-row')?.innerText ?? '')`))
+  await until(`document.querySelector('#meal-name')?.innerText === 'Dahl'`, 4000)
+  await evaluate(`[...document.querySelectorAll('button')].find((b) => b.innerText === 'Skip').click(); return true`)
+  ok('rate: skipping the last one ends the round', await until(`/Nothing left in this round/.test(document.querySelector('.finished')?.innerText ?? '')`))
+  ok('phone: no horizontal overflow on Rate', (await overflow()) <= 0, String(await overflow()))
+
+  const saved = (await http('GET', '/api/planner/meals', sam.token)).meals
+  const fried = saved.find((m) => m.name === 'Fried rice')
+  ok('rate: saved as Both', fried.ratings.some((r) => r.ratedAs === 'both' && r.thumbs === 1 && r.stars === 4 && !r.optionId))
+
+  // Detail: rate an option as Chloe, accept a tag, send a note
+  await evaluate(`location.hash = '#/meals/${fried.id}'; return true`)
+  ok('detail: shows the meal', await until(`document.querySelector('.head h1')?.innerText === 'Fried rice'`))
+  await evaluate(`[...document.querySelectorAll('[role=radio]')].find((b) => b.innerText === 'Chloe').click(); return true`)
+  await click('button[aria-label="Fried rice, Prawn: make again"]')
+  await click('button[aria-label="Add tag quick"]')
+  ok('detail: accepted tag turns solid', await until(`[...document.querySelectorAll('.chip.on')].some((c) => c.innerText.includes('quick'))`))
+  await type('#note', 'Tofu and prawn should be separate meals')
+  await click('.note-form button[type="submit"]')
+  ok('detail: note shows as waiting for Claude', await until(`/Waiting for Claude/.test(document.querySelector('.note')?.innerText ?? '')`))
+  ok('phone: no horizontal overflow on detail', (await overflow()) <= 0, String(await overflow()))
+  await shot('7-detail.png')
+  const after = (await http('GET', '/api/planner/meals', sam.token)).meals.find((m) => m.name === 'Fried rice')
+  const chloeId = samHousehold.members.find((m) => m.name === 'Chloe').id
+  ok('detail: option rated as Chloe', after.ratings.some((r) => r.ratedAs === chloeId && r.optionId && r.thumbs === 1))
+  ok('detail: tag saved', after.tags.includes('quick'))
+  ok('detail: note saved', after.notes.length === 1)
+  await evaluate(`[...document.querySelectorAll('[role=radio]')].find((b) => b.innerText === 'Both').click(); return true`)
 
   /* ---------- Sign out ---------- */
   await evaluate(`location.hash = '#/settings'; return true`)

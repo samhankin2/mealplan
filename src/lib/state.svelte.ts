@@ -3,7 +3,12 @@ import { getToken, setToken } from './auth'
 import { isDay, weekStart } from './dates'
 import type { Day, Household, User } from './types'
 
-export type Route = { name: 'week'; start: Day } | { name: 'settings' }
+export type Route =
+  | { name: 'week'; start: Day }
+  | { name: 'meals' }
+  | { name: 'rate' }
+  | { name: 'meal'; id: string }
+  | { name: 'settings' }
 
 export const app = $state({
   status: 'loading' as 'loading' | 'signed-out' | 'ready',
@@ -19,6 +24,9 @@ export const app = $state({
 function parseHash(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean)
   if (parts[0] === 'settings') return { name: 'settings' }
+  if (parts[0] === 'meals' && parts[1]) return { name: 'meal', id: decodeURIComponent(parts[1]) }
+  if (parts[0] === 'meals') return { name: 'meals' }
+  if (parts[0] === 'rate') return { name: 'rate' }
   const start = parts[0] === 'week' && parts[1] && isDay(parts[1]) ? weekStart(parts[1]) : weekStart()
   return { name: 'week', start }
 }
