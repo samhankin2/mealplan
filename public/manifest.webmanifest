@@ -1,0 +1,12 @@
+{
+  "id": "./",
+  "name": "mealplan",
+  "short_name": "mealplan",
+  "description": "Our weekly meal plan, and the meals worth making again.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f2ea",
+  "theme_color": "#f7f2ea",
+  "icons": [{ "src": "./favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
