@@ -57,12 +57,50 @@ export function ratingFor(meal: Meal, optionId: string | null, ratedAs: RatedAs)
   return meal.ratings.find((r) => (r.optionId ?? null) === optionId && r.ratedAs === ratedAs)
 }
 
-/** Rated by this persona at the meal level? */
-export function isRated(meal: Meal, ratedAs: RatedAs): boolean {
-  return Boolean(ratingFor(meal, null, ratedAs))
+/** One thing to rate: the meal itself, one variation, or one combination. */
+export interface Rateable {
+  key: string | null // null = the meal; option id; or sorted ids joined with '+'
+  label: string
 }
 
-/** How many meals this persona has rated (meal level). */
+/**
+ * Every variation and every combination of a meal. No options: the meal.
+ * One axis: each option. Two axes: every pairing (style first).
+ */
+export function rateables(meal: Meal): Rateable[] {
+  const groups = axes(meal)
+  if (groups.length === 0) return [{ key: null, label: meal.name }]
+  // Style-like axes read first: "Cajun · Kangaroo".
+  groups.sort((a, b) => (a.axis === 'Style' ? -1 : b.axis === 'Style' ? 1 : 0))
+  let combos: { ids: string[]; names: string[] }[] = [{ ids: [], names: [] }]
+  for (const g of groups) {
+    combos = combos.flatMap((c) => g.options.map((o) => ({ ids: [...c.ids, o.id], names: [...c.names, o.name] })))
+  }
+  return combos.map((c) => ({ key: [...c.ids].sort().join('+'), label: c.names.join(' · ') }))
+}
+
+const complete = (r: Rating | undefined): boolean => Boolean(r && r.thumbs !== null && r.stars !== null)
+
+/** Every variation / combination has thumbs and stars from this persona. */
+export function isRated(meal: Meal, ratedAs: RatedAs): boolean {
+  return rateables(meal).every((x) => complete(ratingFor(meal, x.key, ratedAs)))
+}
+
+/** [done, total] variations rated by this persona for one meal. */
+export function ratedParts(meal: Meal, ratedAs: RatedAs): [number, number] {
+  const all = rateables(meal)
+  return [all.filter((x) => complete(ratingFor(meal, x.key, ratedAs))).length, all.length]
+}
+
+/** The best rating this persona gave any variation (for list summaries). */
+export function bestRating(meal: Meal, ratedAs: RatedAs): Rating | undefined {
+  const keys = new Set(rateables(meal).map((x) => x.key))
+  return meal.ratings
+    .filter((r) => r.ratedAs === ratedAs && keys.has(r.optionId ?? null))
+    .sort((a, b) => (b.stars ?? 0) - (a.stars ?? 0) || (b.thumbs ?? 0) - (a.thumbs ?? 0))[0]
+}
+
+/** How many meals this persona has fully rated. */
 export function ratedCount(list: Meal[], ratedAs: RatedAs): number {
   return list.filter((m) => isRated(m, ratedAs)).length
 }

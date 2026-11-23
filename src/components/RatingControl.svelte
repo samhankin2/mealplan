@@ -5,8 +5,8 @@
     value,
     label,
     onchange,
-    compact = false,
-  }: { value: Value; label: string; onchange: (next: Value) => void; compact?: boolean } = $props()
+    size = 'lg',
+  }: { value: Value; label: string; onchange: (next: Value) => void; size?: 'lg' | 'md' | 'sm' | 'xs' } = $props()
 
   function setThumbs(t: -1 | 1): void {
     onchange({ thumbs: value.thumbs === t ? null : t, stars: value.stars })
@@ -16,7 +16,7 @@
   }
 </script>
 
-<div class="rating" class:compact role="group" aria-label={label}>
+<div class={`rating ${size}`} role="group" aria-label={label}>
   <div class="thumbs">
     <button type="button" class="thumb up" aria-pressed={value.thumbs === 1} aria-label={`${label}: make again`} onclick={() => setThumbs(1)}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 11v9H4v-9h3zm2 9V10l4.5-7c1.2 0 2.2 1 2 2.2L15 9h4.6c1.2 0 2.1 1.1 1.9 2.3l-1.3 7c-.2 1-1 1.7-2 1.7H9z" /></svg>
@@ -40,15 +40,39 @@
 
 <style>
   .rating {
+    --thumb: 44px;
+    --star-w: 36px;
+    --star-h: 44px;
+    --star-font: 1.6rem;
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+  .md {
+    --thumb: 40px;
+    --star-w: 30px;
+    --star-h: 40px;
+    --star-font: 1.4rem;
+    gap: 0.4rem;
+  }
+  .sm {
+    --thumb: 34px;
+    --star-w: 26px;
+    --star-h: 34px;
+    --star-font: 1.25rem;
+    gap: 0.3rem;
+  }
+  .xs {
+    --thumb: 30px;
+    --star-w: 24px;
+    --star-h: 30px;
+    --star-font: 1.15rem;
+    gap: 0.25rem;
   }
   .thumbs,
   .stars {
     display: flex;
-    gap: 0.25rem;
+    gap: 0.2rem;
   }
   button {
     border: 1px solid var(--border-strong);
@@ -56,16 +80,17 @@
     cursor: pointer;
     display: grid;
     place-items: center;
+    padding: 0;
   }
   .thumb {
-    width: 44px;
-    height: 44px;
+    width: var(--thumb);
+    height: var(--thumb);
     border-radius: 999px;
     color: var(--text-muted);
   }
   .thumb svg {
-    width: 20px;
-    height: 20px;
+    width: 52%;
+    height: 52%;
     fill: currentColor;
   }
   .thumb.up[aria-pressed='true'] {
@@ -79,24 +104,15 @@
     color: var(--accent);
   }
   .star {
-    width: 36px;
-    height: 44px;
+    width: var(--star-w);
+    height: var(--star-h);
     border: none;
     background: none;
-    font-size: 1.6rem;
+    font-size: var(--star-font);
     line-height: 1;
     color: var(--border-strong);
-    padding: 0;
   }
   .star.on {
     color: #e2a33b;
-  }
-  .compact .thumb {
-    width: 40px;
-    height: 40px;
-  }
-  .compact .star {
-    width: 32px;
-    font-size: 1.4rem;
   }
 </style>

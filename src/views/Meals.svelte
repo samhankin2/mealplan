@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import PersonaPicker from '../components/PersonaPicker.svelte'
   import { app } from '../lib/state.svelte'
-  import { isRated, loadMeals, meals, persona, ratedCount, ratingFor, sortedMeals } from '../lib/meals.svelte'
+  import { bestRating, isRated, loadMeals, meals, persona, ratedCount, ratedParts, sortedMeals } from '../lib/meals.svelte'
 
   let query = $state('')
   let filter = $state<'all' | 'unrated'>('all')
@@ -71,11 +71,12 @@
 {:else}
   <ul class="list">
     {#each shown as meal (meal.id)}
-      {@const r = ratingFor(meal, null, persona.value)}
+      {@const r = bestRating(meal, persona.value)}
+      {@const parts = ratedParts(meal, persona.value)}
       <li>
         <a class="card row" href={`#/meals/${encodeURIComponent(meal.id)}`}>
           <span class="name">{meal.name}</span>
-          <span class="meta muted">{meal.cooked ? `made ${meal.cooked}×` : 'not in history'}</span>
+          <span class="meta muted">{meal.cooked ? `made ${meal.cooked}×` : 'not in history'}{parts[1] > 1 ? ` · ${parts[0]}/${parts[1]} variations` : ''}</span>
           <span class="score" aria-label={r ? `rated ${r.thumbs === 1 ? 'thumbs up' : r.thumbs === -1 ? 'thumbs down' : ''} ${r.stars ? `${r.stars} stars` : ''}` : 'not rated'}>
             {#if r}
               {r.thumbs === 1 ? '👍' : r.thumbs === -1 ? '👎' : ''}{r.stars ? ` ${'★'.repeat(r.stars)}` : ''}

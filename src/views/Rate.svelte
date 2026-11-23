@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import PersonaPicker from '../components/PersonaPicker.svelte'
-  import RatingControl from '../components/RatingControl.svelte'
-  import { axes, loadMeals, meals, milestone, nextUnrated, persona, rate, ratedCount, ratingFor } from '../lib/meals.svelte'
+  import RateRows from '../components/RateRows.svelte'
+  import { isRated, loadMeals, meals, milestone, nextUnrated, persona, ratedCount, ratedParts } from '../lib/meals.svelte'
 
   let skipped = $state(new Set<string>())
   let streak = $state(0)
@@ -10,8 +10,6 @@
   let celebrate = $state<string | null>(null)
   let error = $state('')
   let advancing = $state(false)
-
-  // Stay on the current meal while it's being rated; pick the next one only on advance.
   let currentId = $state<string | null>(null)
 
   onMount(() => void loadMeals())
@@ -20,9 +18,8 @@
   const done = $derived(ratedCount(meals.list, persona.value))
   const pct = $derived(total ? Math.round((done / total) * 100) : 0)
   const current = $derived(meals.list.find((m) => m.id === currentId))
-  const value = $derived(current ? ratingFor(current, null, persona.value) ?? { thumbs: null, stars: null } : { thumbs: null, stars: null })
+  const parts = $derived(current ? ratedParts(current, persona.value) : [0, 0])
 
-  // Pick a meal when there isn't one (first load, persona switch, after advancing).
   $effect(() => {
     if (meals.loaded && !current) currentId = nextUnrated(meals.list, persona.value, skipped)?.id ?? null
   })
@@ -39,87 +36,74 @@
 
   function advance(): void {
     advancing = false
+    error = ''
     currentId = nextUnrated(meals.list, persona.value, skipped)?.id ?? null
   }
 
-  async function onRate(next: { thumbs: -1 | 1 | null; stars: number | null }): Promise<void> {
-    if (!current) return
-    // Scored once, when the meal first has both thumbs and stars (taps arrive one at a time).
-    const before = ratingFor(current, null, persona.value)
-    const wasRated = Boolean(before && before.thumbs !== null && before.stars !== null)
-    error = ''
-    try {
-      await rate(current.id, null, persona.value, next)
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e)
-      return
-    }
-    // Thumbs + stars = done with this one: score it and move on.
-    if (next.thumbs !== null && next.stars !== null && !advancing) {
-      advancing = true
-      if (!wasRated) {
-        streak++
-        pop++
-        celebrate = milestone(ratedCount(meals.list, persona.value), total)
-      }
-      window.setTimeout(advance, celebrate ? 1400 : 650)
-    }
+  // After each tap: a meal with every variation rated scores and moves on.
+  function onRated(): void {
+    if (!current || advancing || !isRated(current, persona.value)) return
+    advancing = true
+    streak++
+    pop++
+    celebrate = milestone(ratedCount(meals.list, persona.value), total)
+    window.setTimeout(advance, celebrate ? 1400 : 600)
   }
 
-  function skip(): void {
+  function next(): void {
     if (!current) return
-    skipped = new Set([...skipped, current.id])
-    streak = 0
+    if (!isRated(current, persona.value)) {
+      skipped = new Set([...skipped, current.id])
+      streak = 0
+    }
     advance()
   }
 </script>
 
-<div class="top">
-  <a class="back" href="#/meals">‹ Meals</a>
-  <PersonaPicker />
-</div>
-
-<div class="progress-row">
-  <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax={total} aria-valuenow={done} aria-label="Meals rated">
-    <span style={`width: ${pct}%`}></span>
+<div class="page">
+  <div class="top">
+    <a class="back" href="#/meals" aria-label="Back to meals">‹</a>
+    <PersonaPicker />
   </div>
-  <strong>{done}/{total}</strong>
-  {#if streak >= 2}<span class="streak" aria-label={`${streak} in a row`}>🔥 {streak}</span>{/if}
-</div>
 
-{#if !meals.loaded}
-  <p class="muted">Loading…</p>
-{:else if !current}
-  <div class="card finished">
-    <p class="big">🎉</p>
-    <h1>{done === total ? 'All rated!' : 'Nothing left in this round'}</h1>
-    <p class="muted">
-      {done === total ? `${total} meals rated. That's the lot.` : `You skipped ${skipped.size}. Come back to them any time.`}
-    </p>
-    {#if skipped.size}<button class="btn" type="button" onclick={() => { skipped = new Set(); advance() }}>Go through the skipped ones</button>{/if}
-    <a class="btn btn-primary" href="#/meals">Back to meals</a>
+  <div class="progress-row">
+    <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax={total} aria-valuenow={done} aria-label="Meals rated">
+      <span style={`width: ${pct}%`}></span>
+    </div>
+    <strong>{done}/{total}</strong>
+    {#if streak >= 2}<span class="streak" aria-label={`${streak} in a row`}>🔥{streak}</span>{/if}
   </div>
-{:else}
-  {#key current.id}
-    <article class="card meal" aria-labelledby="meal-name">
-      <p class="made muted">{current.cooked ? `Made ${current.cooked} time${current.cooked === 1 ? '' : 's'}` : 'From the recipe list'}</p>
-      <h1 id="meal-name">{current.name}</h1>
-      {#if current.options.length}
-        <p class="opts muted">{axes(current).map((a) => a.options.map((o) => o.name).join(' · ')).join('  |  ')}</p>
-      {/if}
-      <div class="rate">
-        <RatingControl label={current.name} value={value} onchange={(v) => void onRate(v)} />
-      </div>
-      <p class="hint muted">Thumbs = make again? Stars = how good.</p>
-      {#if error}<p class="error" role="alert">{error}</p>{/if}
-      <div class="actions">
-        <button class="btn" type="button" onclick={skip}>Skip</button>
-        <a class="btn" href={`#/meals/${encodeURIComponent(current.id)}`}>Options, tags & notes</a>
-      </div>
-      {#key pop}{#if pop}<span class="plus" aria-hidden="true">+1</span>{/if}{/key}
-    </article>
-  {/key}
-{/if}
+
+  {#if !meals.loaded}
+    <p class="muted">Loading…</p>
+  {:else if !current}
+    <div class="card finished">
+      <p class="big">🎉</p>
+      <h1>{done === total ? 'All rated!' : 'Nothing left in this round'}</h1>
+      <p class="muted">{done === total ? `${total} meals, every variation.` : `You skipped ${skipped.size}. Come back to them any time.`}</p>
+      {#if skipped.size}<button class="btn" type="button" onclick={() => { skipped = new Set(); advance() }}>Go through the skipped ones</button>{/if}
+      <a class="btn btn-primary" href="#/meals">Back to meals</a>
+    </div>
+  {:else}
+    {#key current.id}
+      <article class="card meal" aria-labelledby="meal-name">
+        <header>
+          <p class="made muted">
+            {current.cooked ? `Made ${current.cooked}×` : 'Recipe list'}{parts[1] > 1 ? ` · ${parts[0]}/${parts[1]} rated` : ''}
+          </p>
+          <h1 id="meal-name">{current.name}</h1>
+        </header>
+        <RateRows meal={current} ratedAs={persona.value} onrated={onRated} onerror={(m) => (error = m)} />
+        {#if error}<p class="error" role="alert">{error}</p>{/if}
+        <footer>
+          <a class="detail muted" href={`#/meals/${encodeURIComponent(current.id)}`}>Tags & notes</a>
+          <button class="btn btn-primary" type="button" onclick={next}>{isRated(current, persona.value) ? 'Next ›' : 'Skip ›'}</button>
+        </footer>
+        {#key pop}{#if pop}<span class="plus" aria-hidden="true">+1</span>{/if}{/key}
+      </article>
+    {/key}
+  {/if}
+</div>
 
 {#if celebrate}
   <div class="celebrate" role="status" aria-live="polite">
@@ -132,28 +116,42 @@
 {/if}
 
 <style>
+  /* One screen, no scrolling: the page is exactly the viewport (no app bar here). */
+  .page {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    height: calc(100dvh - 1rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
   .top {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-    margin-bottom: 0.75rem;
+    gap: 0.5rem;
   }
   .back {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
     color: var(--text-muted);
     text-decoration: none;
+    font-size: 1.5rem;
     font-weight: 600;
+    flex: none;
+  }
+  .top :global(.label) {
+    display: none;
   }
   .progress-row {
     display: grid;
     grid-template-columns: 1fr auto auto;
     align-items: center;
-    gap: 0.6rem;
-    margin-bottom: 1rem;
+    gap: 0.5rem;
+    font-size: 0.95rem;
   }
   .bar {
-    height: 12px;
+    height: 10px;
     border-radius: 999px;
     background: var(--surface-sunken);
     overflow: hidden;
@@ -170,10 +168,13 @@
   }
   .meal {
     position: relative;
-    display: grid;
-    justify-items: center;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: 0.6rem;
-    padding: 2rem 1rem 1.25rem;
+    padding: 0.9rem 0.75rem 0.75rem;
     text-align: center;
     animation: enter 0.25s ease-out;
   }
@@ -183,50 +184,41 @@
       transform: translateY(12px) scale(0.98);
     }
   }
+  header {
+    display: grid;
+    gap: 0.15rem;
+  }
   .made {
     margin: 0;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
   }
   h1 {
-    font-size: 2rem;
+    font-size: 1.7rem;
   }
-  .opts {
-    margin: 0;
-    font-size: 0.9rem;
-  }
-  .rate {
-    margin: 0.75rem 0 0.25rem;
-  }
-  .rate :global(.rating) {
-    justify-content: center;
-  }
-  .hint {
-    margin: 0;
-    font-size: 0.85rem;
-  }
-  .actions {
+  footer {
+    margin-top: auto;
+    width: 100%;
     display: flex;
+    justify-content: space-between;
+    align-items: center;
     gap: 0.5rem;
-    flex-wrap: wrap;
-    justify-content: center;
-    margin-top: 0.5rem;
+  }
+  .detail {
+    font-weight: 600;
+    font-size: 0.9rem;
   }
   .plus {
     position: absolute;
-    top: 0.75rem;
-    right: 1rem;
+    top: 0.6rem;
+    right: 0.9rem;
     font-weight: 800;
     font-size: 1.4rem;
     color: var(--herb);
     animation: rise 0.8s ease-out forwards;
   }
   @keyframes rise {
-    from {
-      opacity: 1;
-      transform: translateY(0);
-    }
     to {
       opacity: 0;
       transform: translateY(-28px);
@@ -276,7 +268,7 @@
     border-radius: 2px;
     background: hsl(calc(var(--i) * 26) 75% 55%);
     animation: fly 0.9s ease-out forwards;
-    transform: rotate(calc(var(--i) * 25.7deg)) translateY(0);
+    transform: rotate(calc(var(--i) * 25.7deg));
   }
   @keyframes fly {
     to {

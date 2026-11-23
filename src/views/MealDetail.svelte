@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import PersonaPicker from '../components/PersonaPicker.svelte'
-  import RatingControl from '../components/RatingControl.svelte'
-  import { addNote, axes, loadMeals, meals, persona, rate, ratingFor, saveMeal, sortedMeals } from '../lib/meals.svelte'
+  import RateRows from '../components/RateRows.svelte'
+  import { addNote, loadMeals, meals, persona, ratedParts, saveMeal, sortedMeals } from '../lib/meals.svelte'
   import { app } from '../lib/state.svelte'
 
   let { id }: { id: string } = $props()
@@ -22,9 +22,6 @@
   const offered = $derived(meal ? meal.suggestedTags.filter((t) => !meal.tags.some((x) => x.toLowerCase() === t.toLowerCase())) : [])
   const nameOf = (userId: string | null): string => app.household?.members.find((m) => m.id === userId)?.name ?? 'Someone'
 
-  const blank = { thumbs: null, stars: null } as const
-  const valueFor = (optionId: string | null) => (meal ? ratingFor(meal, optionId, persona.value) ?? blank : blank)
-
   async function run(task: () => Promise<void>): Promise<void> {
     error = ''
     try {
@@ -33,9 +30,6 @@
       error = e instanceof Error ? e.message : String(e)
     }
   }
-
-  const onRate = (optionId: string | null) => (v: { thumbs: -1 | 1 | null; stars: number | null }) =>
-    void run(() => rate(meal!.id, optionId, persona.value, v))
 
   function setEffort(e: 1 | 2 | 3): void {
     void run(() => saveMeal(meal!.id, { effort: meal!.effort === e ? null : e }))
@@ -92,18 +86,8 @@
       <h2 id="rate-title">Rating</h2>
       <PersonaPicker />
     </div>
-    <RatingControl label={meal.name} value={valueFor(null)} onchange={onRate(null)} />
-    {#each axes(meal) as group (group.axis)}
-      <h3>{group.axis}</h3>
-      <ul class="options">
-        {#each group.options as option (option.id)}
-          <li>
-            <span>{option.name}</span>
-            <RatingControl compact label={`${meal.name}, ${option.name}`} value={valueFor(option.id)} onchange={onRate(option.id)} />
-          </li>
-        {/each}
-      </ul>
-    {/each}
+    {#if ratedParts(meal, persona.value)[1] > 1}<p class="muted small">{ratedParts(meal, persona.value)[0]} of {ratedParts(meal, persona.value)[1]} variations rated</p>{/if}
+    <RateRows {meal} ratedAs={persona.value} onerror={(m) => (error = m)} />
   </section>
 
   <section class="card block" aria-labelledby="effort-title">
@@ -210,30 +194,6 @@
   }
   h2 {
     font-size: 1.2rem;
-  }
-  h3 {
-    margin: 0.4rem 0 0;
-    font-family: var(--font-body);
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-muted);
-  }
-  .options {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 0.5rem;
-  }
-  .options li {
-    display: grid;
-    gap: 0.25rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid var(--border);
-  }
-  .options li > span {
-    font-weight: 600;
   }
   .seg {
     display: flex;

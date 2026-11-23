@@ -20,6 +20,8 @@
 {:else if app.status === 'signed-out'}
   <Login />
 {:else}
+  <!-- Rating is a full-screen game: no app bar, it has its own back arrow. -->
+  {#if current.name !== 'rate'}
   <header class="bar">
     <a class="brand" href="#/week">mealplan</a>
     <nav aria-label="Main">
@@ -28,7 +30,8 @@
       <a href="#/settings" aria-current={current.name === 'settings' ? 'page' : undefined}>Settings</a>
     </nav>
   </header>
-  <main>
+  {/if}
+  <main class:focus={current.name === 'rate'}>
     {#if current.name === 'week'}
       <Week start={current.start} />
     {:else if current.name === 'meals'}
@@ -87,5 +90,8 @@
     max-width: 640px;
     margin: 0 auto;
     padding: 1rem 1rem calc(2rem + env(safe-area-inset-bottom));
+  }
+  main.focus {
+    padding: calc(0.5rem + env(safe-area-inset-top)) 0.75rem calc(0.5rem + env(safe-area-inset-bottom));
   }
 </style>
