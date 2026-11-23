@@ -11,10 +11,15 @@
   function setThumbs(t: -1 | 1): void {
     onchange({ thumbs: value.thumbs === t ? null : t, stars: value.stars })
   }
+  // Stars imply thumbs: 3+ is "make again", 1–2 is "don't".
+  const implied = (stars: number): -1 | 1 => (stars >= 3 ? 1 : -1)
+
   function setStars(s: number): void {
     const stars = value.stars === s ? null : s
-    // 3+ stars implies "make again" when thumbs isn't chosen yet; never overrides a thumbs down.
-    const thumbs = value.thumbs === null && stars !== null && stars >= 3 ? 1 : value.thumbs
+    // Fill a blank thumbs, and keep following the stars while thumbs still agrees
+    // with them. A thumbs that disagrees (thumbs down on 4 stars) was chosen: keep it.
+    const following = value.thumbs === null || (value.stars !== null && value.thumbs === implied(value.stars))
+    const thumbs = stars !== null && following ? implied(stars) : value.thumbs
     onchange({ thumbs, stars })
   }
 </script>

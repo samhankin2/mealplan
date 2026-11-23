@@ -217,6 +217,12 @@ try {
   // One tap: 3+ stars fills in thumbs up.
   await click('button[aria-label="Dahl: 3 stars"]')
   ok('rate: 3 stars pre-fills thumbs up', await until(`document.querySelector('button[aria-label="Dahl: make again"]')?.getAttribute('aria-pressed') === 'true'`))
+  await click('button[aria-label="Dahl: 2 stars"]')
+  ok('rate: dropping to 2 stars flips it to thumbs down', await until(`document.querySelector('button[aria-label="Dahl: don\\'t make again"]')?.getAttribute('aria-pressed') === 'true'`))
+  await click('button[aria-label="Dahl: make again"]')
+  await click('button[aria-label="Dahl: 1 star"]')
+  ok('rate: a chosen thumbs that disagrees is kept', await until(`document.querySelector('button[aria-label="Dahl: make again"]')?.getAttribute('aria-pressed') === 'true'`))
+  await click('button[aria-label="Dahl: 3 stars"]')
   await evaluate(`[...document.querySelectorAll('.effort button')].find((b) => b.innerText === 'Low').click(); return true`)
   ok('rate: the section comes next, together', await until(`(document.querySelector('#meal-name')?.innerText ?? '').startsWith('Pulled pork sandwiches')`, 4000))
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true })
