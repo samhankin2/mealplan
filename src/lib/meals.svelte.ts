@@ -48,9 +48,22 @@ export async function loadMeals(force = false): Promise<void> {
   }
 }
 
-/** Most cooked first, then A–Z: the order we rate in. */
+/**
+ * Most cooked first, then A–Z: the order we rate in. A section (family) stays
+ * together, placed where its most-cooked meal would be.
+ */
 export function sortedMeals(list: Meal[]): Meal[] {
-  return [...list].sort((a, b) => b.cooked - a.cooked || a.name.localeCompare(b.name))
+  const familyTop = new Map<string, number>()
+  for (const m of list) if (m.family) familyTop.set(m.family, Math.max(familyTop.get(m.family) ?? 0, m.cooked))
+  const rank = (m: Meal) => (m.family ? familyTop.get(m.family)! : m.cooked)
+  const groupName = (m: Meal) => m.family ?? m.name
+  return [...list].sort(
+    (a, b) =>
+      rank(b) - rank(a) ||
+      groupName(a).localeCompare(groupName(b)) ||
+      b.cooked - a.cooked ||
+      a.name.localeCompare(b.name),
+  )
 }
 
 export function ratingFor(meal: Meal, optionId: string | null, ratedAs: RatedAs): Rating | undefined {

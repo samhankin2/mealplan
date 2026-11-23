@@ -76,7 +76,7 @@
   <header class="head">
     <h1>{meal.name}</h1>
     <p class="muted">
-      {meal.cooked ? `Made ${meal.cooked} time${meal.cooked === 1 ? '' : 's'}` : 'From the recipe list'}{meal.aliases.length ? ` · also “${meal.aliases.slice(0, 3).join('”, “')}”` : ''}
+      {meal.family ? `${meal.family} · ` : ''}{meal.cooked ? `Made ${meal.cooked} time${meal.cooked === 1 ? '' : 's'}` : 'From the recipe list'}{meal.aliases.length ? ` · also “${meal.aliases.slice(0, 3).join('”, “')}”` : ''}
     </p>
     {#if meal.tips}<p class="tips">Tip: {meal.tips}</p>{/if}
   </header>

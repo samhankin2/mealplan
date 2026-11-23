@@ -89,11 +89,15 @@
     line-height: 1.15;
     min-width: 0;
   }
+  /* Names wrap (two lines at most) rather than being cut off. */
   .first,
   .rest {
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
   .first {
     font-weight: 600;

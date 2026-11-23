@@ -162,6 +162,8 @@ try {
       { name: 'Dirty cabbage', options: { Style: ['Cajun', 'Korean', 'Chinese'], Protein: ['Kangaroo', 'Beef'] }, aliases: [], suggestedTags: [] },
       { name: 'Risotto', options: { Style: ['Blue cheese', 'Chorizo', 'Pumpkin', 'Mushroom', 'Lemon herb', 'Miso', 'Tomato zucchini', 'Fennel', 'Caramelised onion and fennel', 'Tomato', 'Asparagus pea'] }, aliases: [], suggestedTags: ['Italian'] },
       { name: 'Dahl', options: {}, aliases: ['Dhal'], suggestedTags: ['curry', 'vegetarian'] },
+      { name: 'Pulled pork sandwiches', family: 'Pulled pork', options: {}, aliases: [], suggestedTags: [] },
+      { name: 'Pulled pork soup', family: 'Pulled pork', options: {}, aliases: [], suggestedTags: [] },
     ],
     weeks: [{ source: 'qa', week: 1, entries: [
       { day: 'Mon', raw: 'Fried rice', dish: 'Fried rice' }, { day: 'Tue', raw: 'Fried rice prawn', dish: 'Fried rice', options: { Protein: 'Prawn' } },
@@ -181,32 +183,35 @@ try {
   }
 
   await signInAs(sam.token, '#/meals')
-  ok('meals: list shows imported meals, most made first', await until(`document.querySelectorAll('.list .name').length === 4`) && (await evaluate(`return document.querySelector('.list .name').innerText`)) === 'Fried rice')
-  ok('meals: progress starts at 0/4', /0\/4/.test(await text('.progress-row')))
+  ok('meals: list shows imported meals, most made first', await until(`document.querySelectorAll('.list .name').length === 6`) && (await evaluate(`return document.querySelector('.list .name').innerText`)) === 'Fried rice')
+  ok('meals: progress starts at 0/6', /0\/6/.test(await text('.progress-row')))
+  ok('meals: a section heading groups its meals', (await evaluate(`return [...document.querySelectorAll('.list .section h2')].map((e) => e.innerText).join('|')`)) === 'Pulled pork' && (await evaluate(`return document.querySelectorAll('.list .in-family').length`)) === 2)
   ok('meals: variation count in the list', /0\/6 variations/.test(await text('.list')), await text('.list'))
   await shot('5-meals.png')
   await evaluate(`document.querySelector('a.start').click(); return true`)
-  ok('rate: first card is the most made meal', await until(`document.querySelector('#meal-name')?.innerText === 'Fried rice'`))
+  ok('rate: first card is the most made meal', await until(`(document.querySelector('#meal-name')?.innerText ?? '').startsWith('Fried rice')`))
   ok('rate: one row per variation', (await evaluate(`return [...document.querySelectorAll('.rows .label')].map((e) => e.title).join('|')`)) === 'Prawn|Tofu')
   await rateRow('Fried rice, Prawn')
-  ok('rate: half done stays put', (await text('#meal-name')) === 'Fried rice' && /1\/2 rated/i.test(await text('.made')))
+  ok('rate: half done stays put', /^Fried rice/.test(await text('#meal-name')) && /1\/2/.test(await text('#meal-name .count')))
   await rateRow('Fried rice, Tofu')
-  ok('rate: every variation rated advances', await until(`document.querySelector('#meal-name')?.innerText === 'Dirty cabbage'`, 4000))
-  ok('rate: progress 1/4', /1\/4/.test(await text('.progress-row')))
+  ok('rate: every variation rated advances', await until(`(document.querySelector('#meal-name')?.innerText ?? '').startsWith('Dirty cabbage')`, 4000))
+  ok('rate: progress 1/6', /1\/6/.test(await text('.progress-row')))
+  ok('rate: shows who we rate as', /as Both/.test(await text('.progress-row')))
+  ok('rate: no persona row on the game screen', !(await evaluate(`return Boolean(document.querySelector('[aria-label="Rating as"]'))`)))
   const combos = await evaluate(`return [...document.querySelectorAll('.rows .label')].map((e) => e.title)`)
   ok('rate: two axes give every combination, style first', combos.length === 6 && combos[0] === 'Cajun · Kangaroo' && combos.includes('Chinese · Beef'), combos.join('|'))
   ok('rate: six combinations fit without scrolling', (await fits()) <= 0, String(await fits()))
   await shot('6-rate-combos.png')
   for (const c of combos) await rateRow(`Dirty cabbage, ${c}`)
   ok('rate: streak after two meals in a row', await until(`/🔥2/.test(document.querySelector('.progress-row')?.innerText ?? '')`))
-  ok('rate: then the 11-style risotto', await until(`document.querySelector('#meal-name')?.innerText === 'Risotto'`, 4000))
+  ok('rate: then the 11-style risotto', await until(`(document.querySelector('#meal-name')?.innerText ?? '').startsWith('Risotto')`, 4000))
   ok('rate: 11 rows fit without scrolling', (await fits()) <= 0, String(await fits()))
   ok('phone: no horizontal overflow on Rate', (await overflow()) <= 0, String(await overflow()))
   await shot('6b-rate-risotto.png')
   await evaluate(`[...document.querySelectorAll('button')].find((b) => b.innerText.startsWith('Skip')).click(); return true`)
-  ok('rate: a single meal gets the big control', await until(`document.querySelector('#meal-name')?.innerText === 'Dahl' && document.querySelector('.single')`, 4000))
+  ok('rate: a single meal gets the big control', await until(`(document.querySelector('#meal-name')?.innerText ?? '').startsWith('Dahl') && document.querySelector('.single')`, 4000))
   await rateRow('Dahl')
-  ok('rate: round ends after the last', await until(`/Nothing left in this round/.test(document.querySelector('.finished')?.innerText ?? '')`, 4000))
+  ok('rate: the section comes next, together', await until(`(document.querySelector('#meal-name')?.innerText ?? '').startsWith('Pulled pork sandwiches')`, 4000))
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true })
 
   const saved = (await http('GET', '/api/planner/meals', sam.token)).meals

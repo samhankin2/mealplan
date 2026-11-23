@@ -70,10 +70,13 @@
   <p class="muted">No meals yet. They arrive with the history import.</p>
 {:else}
   <ul class="list">
-    {#each shown as meal (meal.id)}
+    {#each shown as meal, i (meal.id)}
       {@const r = bestRating(meal, persona.value)}
       {@const parts = ratedParts(meal, persona.value)}
-      <li>
+      {#if meal.family && shown[i - 1]?.family !== meal.family}
+        <li class="section"><h2>{meal.family}</h2></li>
+      {/if}
+      <li class:in-family={Boolean(meal.family)}>
         <a class="card row" href={`#/meals/${encodeURIComponent(meal.id)}`}>
           <span class="name">{meal.name}</span>
           <span class="meta muted">{meal.cooked ? `made ${meal.cooked}×` : 'not in history'}{parts[1] > 1 ? ` · ${parts[0]}/${parts[1]} variations` : ''}</span>
@@ -182,6 +185,15 @@
     padding: 0;
     display: grid;
     gap: 0.5rem;
+  }
+  .section h2 {
+    margin: 0.5rem 0 0;
+    font-size: 1.05rem;
+    color: var(--accent);
+  }
+  .in-family {
+    padding-left: 0.75rem;
+    border-left: 3px solid var(--accent-soft);
   }
   .row {
     display: grid;

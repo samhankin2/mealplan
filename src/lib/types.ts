@@ -47,6 +47,7 @@ export interface MealNote {
 export interface Meal {
   id: string
   name: string
+  family: string | null // section of related meals, e.g. "Pulled pork"
   tags: string[]
   suggestedTags: string[]
   effort: 1 | 2 | 3 | null

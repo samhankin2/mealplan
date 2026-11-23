@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import PersonaPicker from '../components/PersonaPicker.svelte'
   import RateRows from '../components/RateRows.svelte'
   import { isRated, loadMeals, meals, milestone, nextUnrated, persona, ratedCount, ratedParts } from '../lib/meals.svelte'
+  import { app } from '../lib/state.svelte'
 
   let skipped = $state(new Set<string>())
   let streak = $state(0)
@@ -19,6 +19,7 @@
   const pct = $derived(total ? Math.round((done / total) * 100) : 0)
   const current = $derived(meals.list.find((m) => m.id === currentId))
   const parts = $derived(current ? ratedParts(current, persona.value) : [0, 0])
+  const asName = $derived(persona.value === 'both' ? 'Both' : app.household?.members.find((m) => m.id === persona.value)?.name ?? 'Both')
 
   $effect(() => {
     if (meals.loaded && !current) currentId = nextUnrated(meals.list, persona.value, skipped)?.id ?? null
@@ -61,16 +62,13 @@
 </script>
 
 <div class="page">
-  <div class="top">
-    <a class="back" href="#/meals" aria-label="Back to meals">‹</a>
-    <PersonaPicker />
-  </div>
-
   <div class="progress-row">
+    <a class="back" href="#/meals" aria-label="Back to meals">‹</a>
     <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax={total} aria-valuenow={done} aria-label="Meals rated">
       <span style={`width: ${pct}%`}></span>
     </div>
     <strong>{done}/{total}</strong>
+    <span class="as muted">as {asName}</span>
     {#if streak >= 2}<span class="streak" aria-label={`${streak} in a row`}>🔥{streak}</span>{/if}
   </div>
 
@@ -87,12 +85,7 @@
   {:else}
     {#key current.id}
       <article class="card meal" aria-labelledby="meal-name">
-        <header>
-          <p class="made muted">
-            {current.cooked ? `Made ${current.cooked}×` : 'Recipe list'}{parts[1] > 1 ? ` · ${parts[0]}/${parts[1]} rated` : ''}
-          </p>
-          <h1 id="meal-name">{current.name}</h1>
-        </header>
+        <h1 id="meal-name">{current.name}{#if parts[1] > 1}<span class="count muted"> {parts[0]}/{parts[1]}</span>{/if}</h1>
         <RateRows meal={current} ratedAs={persona.value} onrated={onRated} onerror={(m) => (error = m)} />
         {#if error}<p class="error" role="alert">{error}</p>{/if}
         <footer>
@@ -123,11 +116,6 @@
     gap: 0.5rem;
     height: calc(100dvh - 1rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   }
-  .top {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
   .back {
     width: 36px;
     height: 36px;
@@ -140,12 +128,9 @@
     font-weight: 600;
     flex: none;
   }
-  .top :global(.label) {
-    display: none;
-  }
   .progress-row {
     display: grid;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: auto 1fr auto auto auto;
     align-items: center;
     gap: 0.5rem;
     font-size: 0.95rem;
@@ -184,18 +169,18 @@
       transform: translateY(12px) scale(0.98);
     }
   }
-  header {
-    display: grid;
-    gap: 0.15rem;
-  }
-  .made {
-    margin: 0;
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
   h1 {
-    font-size: 1.7rem;
+    font-size: 1.6rem;
+  }
+  .count {
+    margin-left: 0.4rem;
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+  .as {
+    font-size: 0.85rem;
+    white-space: nowrap;
   }
   footer {
     margin-top: auto;
