@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import RateRows from '../components/RateRows.svelte'
-  import { isRated, loadMeals, meals, milestone, nextUnrated, persona, ratedCount, ratedParts } from '../lib/meals.svelte'
+  import { isRated, loadMeals, meals, milestone, nextUnrated, persona, ratedCount, ratedParts, saveMeal } from '../lib/meals.svelte'
   import { app } from '../lib/state.svelte'
 
   let skipped = $state(new Set<string>())
@@ -51,6 +51,17 @@
     window.setTimeout(advance, celebrate ? 1400 : 600)
   }
 
+  async function setEffort(effort: 1 | 2 | 3): Promise<void> {
+    if (!current) return
+    error = ''
+    try {
+      await saveMeal(current.id, { effort: current.effort === effort ? null : effort })
+      onRated()
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e)
+    }
+  }
+
   function next(): void {
     if (!current) return
     if (!isRated(current, persona.value)) {
@@ -86,6 +97,12 @@
     {#key current.id}
       <article class="card meal" aria-labelledby="meal-name">
         <h1 id="meal-name">{current.name}{#if parts[1] > 1}<span class="count muted"> {parts[0]}/{parts[1]}</span>{/if}</h1>
+        <div class="effort" role="radiogroup" aria-label="Effort">
+          <span class="muted">Effort</span>
+          {#each [[1, 'Low'], [2, 'Medium'], [3, 'High']] as [value, label] (value)}
+            <button type="button" role="radio" aria-checked={current.effort === value} onclick={() => void setEffort(value as 1 | 2 | 3)}>{label}</button>
+          {/each}
+        </div>
         <RateRows meal={current} ratedAs={persona.value} onrated={onRated} onerror={(m) => (error = m)} />
         {#if error}<p class="error" role="alert">{error}</p>{/if}
         <footer>
@@ -171,6 +188,32 @@
   }
   h1 {
     font-size: 1.6rem;
+  }
+  .effort {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    width: 100%;
+  }
+  .effort > span {
+    font-size: 0.85rem;
+    margin-right: 0.15rem;
+  }
+  .effort button {
+    flex: 1;
+    min-height: 34px;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+  .effort button[aria-checked='true'] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
   }
   .count {
     margin-left: 0.4rem;

@@ -12,7 +12,10 @@
     onchange({ thumbs: value.thumbs === t ? null : t, stars: value.stars })
   }
   function setStars(s: number): void {
-    onchange({ thumbs: value.thumbs, stars: value.stars === s ? null : s })
+    const stars = value.stars === s ? null : s
+    // 3+ stars implies "make again" when thumbs isn't chosen yet; never overrides a thumbs down.
+    const thumbs = value.thumbs === null && stars !== null && stars >= 3 ? 1 : value.thumbs
+    onchange({ thumbs, stars })
   }
 </script>
 

@@ -94,9 +94,12 @@ export function rateables(meal: Meal): Rateable[] {
 
 const complete = (r: Rating | undefined): boolean => Boolean(r && r.thumbs !== null && r.stars !== null)
 
-/** Every variation / combination has thumbs and stars from this persona. */
+/**
+ * Done for this persona: every variation / combination has thumbs and stars,
+ * and the meal has an effort (shared by the household, set on the parent meal).
+ */
 export function isRated(meal: Meal, ratedAs: RatedAs): boolean {
-  return rateables(meal).every((x) => complete(ratingFor(meal, x.key, ratedAs)))
+  return meal.effort !== null && rateables(meal).every((x) => complete(ratingFor(meal, x.key, ratedAs)))
 }
 
 /** [done, total] variations rated by this persona for one meal. */
