@@ -4,6 +4,7 @@
   import { addDays, shortDate, today, weekDays, weekdayName, weekLabel, weekStart } from '../lib/dates'
   import { loadMeals, meals } from '../lib/meals.svelte'
   import { copyWeek, describe, entryFor, loadWeek, plan } from '../lib/plan.svelte'
+  import { freezer, loadFreezer, loadReview, review } from '../lib/review.svelte'
   import { app } from '../lib/state.svelte'
   import type { Day } from '../lib/types'
 
@@ -27,6 +28,11 @@
     void loadMeals()
     void loadWeek(start)
   })
+  $effect(() => {
+    void loadReview()
+    void loadFreezer()
+  })
+  const frozenPortions = $derived(freezer.items.reduce((n, f) => n + f.portions, 0))
 
   async function copyLast(): Promise<void> {
     busy = true
@@ -58,10 +64,21 @@
     </p>
   {/if}
 
+  {#if review.pending > 0}
+    <a class="card review-banner" href="#/review">
+      <span>
+        <strong>Review last week</strong>
+        <span class="muted">{review.pending} dinner{review.pending === 1 ? '' : 's'} to rate. Takes a minute.</span>
+      </span>
+      <span aria-hidden="true">›</span>
+    </a>
+  {/if}
+
   <div class="tools">
     <button class="btn btn-primary" type="button" onclick={() => (typing = true)}>Type the week</button>
     <button class="btn" type="button" disabled={busy} onclick={() => void copyLast()}>Copy last week</button>
   </div>
+  <a class="freezer-link muted" href="#/freezer">Freezer{frozenPortions ? ` · ${frozenPortions} portion${frozenPortions === 1 ? '' : 's'}` : ''} ›</a>
   {#if notice}<p class="notice muted" role="status">{notice}</p>{/if}
   {#if plan.error}<p class="error" role="alert">{plan.error}</p>{/if}
 
@@ -130,6 +147,34 @@
     grid-template-columns: 1fr 1fr;
     gap: 0.5rem;
     margin-bottom: 0.75rem;
+  }
+  .review-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.8rem 1rem;
+    margin-bottom: 0.75rem;
+    background: #f7e7c3;
+    border-color: #e2a33b;
+    color: #4a3204;
+    text-decoration: none;
+    font-size: 1.2rem;
+  }
+  .review-banner span:first-child {
+    display: grid;
+    font-size: 1rem;
+  }
+  .review-banner .muted {
+    color: #6b4f16;
+    font-size: 0.9rem;
+  }
+  .freezer-link {
+    display: inline-block;
+    margin: -0.25rem 0 0.75rem;
+    font-weight: 600;
+    text-decoration: none;
+    font-size: 0.9rem;
   }
   .notice {
     margin: 0 0 0.75rem;

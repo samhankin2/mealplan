@@ -4,6 +4,10 @@
   import { shortDate, weekdayName } from '../lib/dates'
   import { axes, loadMeals, meals } from '../lib/meals.svelte'
   import { clearNight, searchMeals, setNight } from '../lib/plan.svelte'
+  import { freezer, freezerLabel, loadFreezer } from '../lib/review.svelte'
+  import { onMount } from 'svelte'
+
+  onMount(() => void loadFreezer())
   import type { Day, Meal, NightKind, PlanEntry } from '../lib/types'
 
   let { start, date, entry, onclose }: { start: Day; date: Day; entry: PlanEntry | undefined; onclose: () => void } = $props()
@@ -78,6 +82,8 @@
     })
 
   const clear = () => run(() => clearNight(start, date))
+
+  const fromFreezer = (freezerItemId: string) => run(async () => void (await setNight(start, date, { kind: 'freezer', freezerItemId })))
 </script>
 
 <Sheet title={`${weekdayName(date)} ${shortDate(date)}`} {onclose}>
@@ -105,6 +111,15 @@
       <button type="button" class="kind" onclick={() => void saveKind('leftovers')}>Leftovers</button>
       <button type="button" class="kind" onclick={() => void saveKind('takeaway')}>Takeaway</button>
     </div>
+    {#if freezer.items.length && !query.trim()}
+      <p class="axis muted">From the freezer</p>
+      <div class="chips freezer">
+        {#each freezer.items.slice(0, 6) as item (item.id)}
+          <button type="button" class="chip" onclick={() => void fromFreezer(item.id)}>❄ {freezerLabel(item, meals.list)} <span class="muted">×{item.portions}</span></button>
+        {/each}
+      </div>
+      <p class="axis muted">Or cook</p>
+    {/if}
     <label class="visually-hidden" for="night-search">Find a meal</label>
     <input id="night-search" class="search" type="search" placeholder="Find a meal…" autocomplete="off" bind:value={query} />
     <ul class="results">

@@ -22,7 +22,7 @@
     const meal = meals.list.find((m) => m.id === r.dishId)
     return meal ? meal.options.filter((o) => r.optionIds.includes(o.id)).map((o) => o.name) : []
   }
-  const KIND_LABEL = { out: 'Out', leftovers: 'Leftovers', takeaway: 'Takeaway', dish: '' } as const
+  const KIND_LABEL = { out: 'Out', leftovers: 'Leftovers', takeaway: 'Takeaway', freezer: 'From the freezer', dish: '' } as const
 
   async function match(): Promise<void> {
     busy = true

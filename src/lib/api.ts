@@ -1,5 +1,5 @@
 import { getToken } from './auth'
-import type { Day, Household, Meal, MealNote, NightKind, ParsedNight, Partner, PlanEntry, RatedAs, Rating, User, Week } from './types'
+import type { Day, FreezerItem, Household, Meal, MealNote, NightKind, ParsedNight, Partner, PlanEntry, RatedAs, Rating, ReviewEntry, User, Week } from './types'
 
 declare global {
   interface Window {
@@ -143,7 +143,7 @@ export const api = {
 
   setNight(
     date: Day,
-    body: { kind: NightKind; dishId?: string | null; optionIds?: string[]; note?: string | null; raw?: string | null },
+    body: { kind: NightKind; dishId?: string | null; optionIds?: string[]; note?: string | null; raw?: string | null; freezerItemId?: string },
   ): Promise<Ok & { entry: PlanEntry }> {
     return request(`/planner/slots/${encodeURIComponent(date)}`, { method: 'PUT', body })
   },
@@ -158,5 +158,40 @@ export const api = {
 
   parseWeek(start: Day, text: string): Promise<Ok & { items: ParsedNight[] }> {
     return request('/planner/parse-week', { method: 'POST', body: { start, text } }, { timeoutMs: 40_000 })
+  },
+
+  review(today: Day): Promise<Ok & { entries: ReviewEntry[] }> {
+    return request(`/planner/review?today=${encodeURIComponent(today)}`)
+  },
+
+  updateEntry(
+    id: string,
+    patch: {
+      status?: 'cooked' | 'skipped' | 'planned'
+      swapToDishId?: string
+      swapOptionIds?: string[]
+      cookNote?: string | null
+      leftovers?: boolean
+      frozenPortions?: number
+      tweakRetry?: boolean
+    },
+  ): Promise<Ok & { entry: ReviewEntry }> {
+    return request(`/planner/entries/${encodeURIComponent(id)}`, { method: 'PUT', body: patch })
+  },
+
+  setReview(id: string, body: { ratedAs: RatedAs; thumbs: -1 | 1 | null; stars: number | null }): Promise<Ok & { entry: ReviewEntry }> {
+    return request(`/planner/entries/${encodeURIComponent(id)}/review`, { method: 'PUT', body })
+  },
+
+  freezer(): Promise<Ok & { items: FreezerItem[] }> {
+    return request('/planner/freezer')
+  },
+
+  addFreezer(body: { dishId: string; optionIds?: string[]; portions: number; frozenOn?: Day }): Promise<Ok & { item: FreezerItem }> {
+    return request('/planner/freezer', { method: 'POST', body })
+  },
+
+  setFreezerPortions(id: string, portions: number): Promise<Ok & { item: FreezerItem }> {
+    return request(`/planner/freezer/${encodeURIComponent(id)}`, { method: 'PUT', body: { portions } })
   },
 }

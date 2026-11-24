@@ -7,6 +7,8 @@ export type Route =
   | { name: 'week'; start: Day }
   | { name: 'meals' }
   | { name: 'rate' }
+  | { name: 'review' }
+  | { name: 'freezer' }
   | { name: 'meal'; id: string }
   | { name: 'settings' }
 
@@ -27,6 +29,8 @@ function parseHash(hash: string): Route {
   if (parts[0] === 'meals' && parts[1]) return { name: 'meal', id: decodeURIComponent(parts[1]) }
   if (parts[0] === 'meals') return { name: 'meals' }
   if (parts[0] === 'rate') return { name: 'rate' }
+  if (parts[0] === 'review') return { name: 'review' }
+  if (parts[0] === 'freezer') return { name: 'freezer' }
   // The week view snaps this to the household's week start (it knows the setting; the hash doesn't).
   const start = parts[0] === 'week' && parts[1] && isDay(parts[1]) ? parts[1] : today()
   return { name: 'week', start }

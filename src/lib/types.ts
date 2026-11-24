@@ -34,6 +34,7 @@ export interface Rating {
   thumbs: -1 | 1 | null
   stars: number | null
   want?: boolean // not had yet, want to make it (no thumbs or stars)
+  source?: 'estimate' | 'review' // estimate = rated from memory; review = from a real cook
 }
 
 export interface MealNote {
@@ -71,7 +72,7 @@ export interface Household {
   partner: Partner | null
 }
 
-export type NightKind = 'dish' | 'out' | 'leftovers' | 'takeaway'
+export type NightKind = 'dish' | 'freezer' | 'out' | 'leftovers' | 'takeaway'
 
 /** One planned dinner. */
 export interface PlanEntry {
@@ -84,7 +85,31 @@ export interface PlanEntry {
   optionIds: string[]
   note: string | null
   raw: string | null
+  freezerItemId: string | null // a night eating frozen stock
+  cookNote: string | null
+  leftovers: boolean // covered a lunch
+  frozenPortions: number
+  tweakRetry: boolean
+  reviewedAt: string | null
   updatedAt: string
+}
+
+/** One person's opinion of a cook. */
+export interface CookReview {
+  ratedAs: RatedAs
+  thumbs: -1 | 1 | null
+  stars: number | null
+}
+
+export type ReviewEntry = PlanEntry & { reviews: CookReview[] }
+
+export interface FreezerItem {
+  id: string
+  dishId: string
+  optionIds: string[]
+  portions: number
+  frozenOn: Day | null
+  fromEntryId: string | null
 }
 
 export interface Week {

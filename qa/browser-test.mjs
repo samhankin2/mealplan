@@ -348,6 +348,73 @@ try {
   ok('week start: Saturday first', await until(`/^Sat/.test(document.querySelectorAll('.days .weekday')[0]?.innerText ?? '')`), await evaluate(`return document.querySelectorAll('.days .weekday')[0]?.innerText`))
   await http('PUT', '/api/planner/household', sam.token, { weekStartDay: 0 })
 
+  /* ---------- Review last week ---------- */
+  const localDay = (offset) => {
+    const t = new Date()
+    t.setDate(t.getDate() + offset)
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+  }
+  const all = (await http('GET', '/api/planner/meals', sam.token)).meals
+  const friedRice = all.find((m) => m.name === 'Fried rice')
+  const prawn = friedRice.options.find((o) => o.name === 'Prawn')
+  await http('PUT', `/api/planner/slots/${localDay(-3)}`, sam.token, { dishId: friedRice.id, optionIds: [prawn.id] })
+  await http('PUT', `/api/planner/slots/${localDay(-2)}`, sam.token, { dishId: all.find((m) => m.name === 'Dahl').id })
+  await http('PUT', `/api/planner/slots/${localDay(-1)}`, sam.token, { dishId: all.find((m) => m.name === 'Risotto').id })
+  await signInAs(sam.token, '#/week')
+  ok('review: the week offers a review', await until(`/Review last week/.test(document.querySelector('.review-banner')?.innerText ?? '') && /3 dinners/.test(document.querySelector('.review-banner')?.innerText ?? '')`), await text('.review-banner'))
+  await click('.review-banner')
+  ok('review: one card per past dinner', await until(`document.querySelectorAll('.review').length === 3`))
+  const card = (i) => `document.querySelectorAll('.review')[${i}]`
+  const inCard = (i, label) => evaluate(`
+    const b = [...${card(i)}.querySelectorAll('button')].find((x) => x.innerText.trim().startsWith(${JSON.stringify(label)}))
+    if (!b) throw new Error('no button ' + ${JSON.stringify(label)}); b.click(); return true`)
+
+  // Cooked + rated + froze two portions
+  await inCard(0, 'Cooked it')
+  ok('review: cooked shows the rating', await until(`${card(0)}.querySelector('.rating')`))
+  await click('button[aria-label="Fried rice: 4 stars"]')
+  await until(`${card(0)}.querySelector('button[aria-label="Fried rice: make again"]')?.getAttribute('aria-pressed') === 'true'`)
+  await inCard(0, 'Note, lunch')
+  await click('button[aria-label="One more portion"]')
+  await until(`/1/.test(${card(0)}.querySelector('.frozen strong')?.innerText ?? '')`)
+  await click('button[aria-label="One more portion"]')
+  ok('review: froze two', await until(`${card(0)}.querySelector('.frozen strong')?.innerText === '2'`))
+  await shot('11-review.png')
+
+  // Skipped, then put on a free night
+  await inCard(1, 'Skipped')
+  ok('review: skipped offers free nights', await until(`/free night/.test(${card(1)}.innerText)`))
+  await evaluate(`${card(1)}.querySelector('.pick').click(); return true`)
+  ok('review: moved', await until(`/Moved to/.test(${card(1)}.innerText)`))
+
+  // Made something else instead
+  await inCard(2, 'Made something else')
+  await type(`#swap-${(await http('GET', `/api/planner/review?today=${localDay(0)}`, sam.token)).entries.find((e) => e.date === localDay(-1)).id}`, 'dahl')
+  await until(`[...${card(2)}.querySelectorAll('.pick')].some((b) => b.innerText === 'Dahl')`)
+  await evaluate(`[...${card(2)}.querySelectorAll('.pick')].find((b) => b.innerText === 'Dahl').click(); return true`)
+  ok('review: swap shows what we made', await until(`/Dahl/.test(${card(2)}.querySelector('h2')?.innerText ?? '') && ${card(2)}.querySelector('.rating')`))
+  ok('review: all reviewed', await until(`/3 of 3 reviewed/.test(document.querySelector('.progress')?.innerText ?? '') && document.querySelector('.all-done')`))
+  ok('phone: no horizontal overflow on Review', (await overflow()) <= 0, String(await overflow()))
+
+  const fr = (await http('GET', '/api/planner/meals', sam.token)).meals.find((m) => m.name === 'Fried rice')
+  ok('review: rating is now from a real cook', fr.ratings.some((r) => r.optionId === prawn.id && r.ratedAs === 'both' && r.stars === 4 && r.source === 'review'))
+  const stock = (await http('GET', '/api/planner/freezer', sam.token)).items
+  ok('review: freezer has two portions', stock.some((f) => f.dishId === fr.id && f.portions === 2 && f.optionIds.includes(prawn.id)))
+  ok('review: nothing left to review', (await http('GET', `/api/planner/review?today=${localDay(0)}`, sam.token)).entries.length === 0)
+
+  // Freezer page and a freezer night
+  await evaluate(`location.hash = '#/freezer'; return true`)
+  ok('freezer: lists the stock', await until(`/Fried rice · Prawn/.test(document.querySelector('.items')?.innerText ?? '')`))
+  await click('button[aria-label="One fewer Fried rice · Prawn"]')
+  ok('freezer: minus one', await until(`document.querySelector('.items strong')?.innerText === '1'`))
+  await shot('12-freezer.png')
+  await evaluate(`location.hash = '#/week/${localDay(14)}'; return true`)
+  await until(`document.querySelectorAll('.days .day').length === 7`)
+  await evaluate(`document.querySelectorAll('.days .day')[6].click(); return true`)
+  ok('night: freezer stock offered', await until(`[...document.querySelectorAll('.chip')].some((b) => /Fried rice · Prawn/.test(b.innerText))`))
+  await evaluate(`[...document.querySelectorAll('.chip')].find((b) => /Fried rice · Prawn/.test(b.innerText)).click(); return true`)
+  ok('night: shows from the freezer', await until(`/From the freezer/.test(document.querySelectorAll('.days .day')[6]?.innerText ?? '')`), await dayText(6))
+
   /* ---------- Sign out ---------- */
   await evaluate(`location.hash = '#/settings'; return true`)
   await until(`[...document.querySelectorAll('button')].some((b) => b.innerText === 'Sign out')`)

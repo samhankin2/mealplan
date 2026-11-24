@@ -43,7 +43,7 @@ function put(start: Day, entry: PlanEntry): void {
 export async function setNight(
   start: Day,
   date: Day,
-  body: { kind: NightKind; dishId?: string | null; optionIds?: string[]; note?: string | null; raw?: string | null },
+  body: { kind: NightKind; dishId?: string | null; optionIds?: string[]; note?: string | null; raw?: string | null; freezerItemId?: string },
 ): Promise<PlanEntry> {
   const { entry } = await api.setNight(date, body)
   put(start, entry)
@@ -100,5 +100,6 @@ export function describe(entry: PlanEntry, meals: Meal[]): { title: string; deta
   if (entry.kind === 'takeaway') return { title: 'Takeaway', detail: entry.note ?? '' }
   const meal = meals.find((m) => m.id === entry.dishId)
   const options = meal ? meal.options.filter((o) => entry.optionIds.includes(o.id)).map((o) => o.name) : []
-  return { title: meal?.name ?? entry.raw ?? 'A meal', detail: [options.join(' · '), entry.note].filter(Boolean).join(' — ') }
+  const first = [entry.kind === 'freezer' ? 'From the freezer' : '', options.join(' · ')].filter(Boolean).join(' · ')
+  return { title: meal?.name ?? entry.raw ?? 'A meal', detail: [first, entry.note].filter(Boolean).join(' — ') }
 }
