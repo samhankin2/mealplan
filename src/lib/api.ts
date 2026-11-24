@@ -1,5 +1,5 @@
 import { getToken } from './auth'
-import type { Day, FreezerItem, Household, Meal, MealNote, NightKind, ParsedNight, Partner, PlanEntry, RatedAs, Rating, ReviewEntry, User, Week } from './types'
+import type { Day, FreezerItem, Household, Meal, MealNote, NightKind, ParsedNight, Partner, PlanEntry, RatedAs, Rating, ReviewEntry, Section, ShoppingItem, ShoppingWeek, User, Week } from './types'
 
 declare global {
   interface Window {
@@ -240,5 +240,25 @@ export const api = {
 
   snooze(mealId: string, today: Day, days = 21): Promise<Ok & { until: Day | null }> {
     return request(`/planner/meals/${encodeURIComponent(mealId)}/snooze`, { method: 'PUT', body: { today, days } })
+  },
+
+  shopping(week: Day, options?: RequestOptions): Promise<Ok & ShoppingWeek> {
+    return request(`/planner/shopping?week=${encodeURIComponent(week)}`, {}, options)
+  },
+
+  addShoppingItem(body: { week: Day; name: string; qty?: string | null; dishId?: string | null; section?: Section | null }): Promise<Ok & { item: ShoppingItem }> {
+    return request('/planner/shopping/items', { method: 'POST', body }, { timeoutMs: 15_000 })
+  },
+
+  updateShoppingItem(id: string, patch: { checked?: boolean; qty?: string | null; section?: Section }): Promise<Ok & { item: ShoppingItem }> {
+    return request(`/planner/shopping/items/${encodeURIComponent(id)}`, { method: 'PUT', body: patch })
+  },
+
+  removeShoppingItem(id: string, dishId?: string): Promise<Ok & { item: ShoppingItem | null }> {
+    return request(`/planner/shopping/items/${encodeURIComponent(id)}${dishId ? `?dishId=${encodeURIComponent(dishId)}` : ''}`, { method: 'DELETE' })
+  },
+
+  clearChecked(week: Day): Promise<Ok & { cleared: number }> {
+    return request(`/planner/shopping/checked?week=${encodeURIComponent(week)}`, { method: 'DELETE' })
   },
 }

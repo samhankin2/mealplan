@@ -89,6 +89,7 @@
     <button class="btn btn-primary" type="button" onclick={() => (typing = true)}>Type the week</button>
     <button class="btn" type="button" disabled={busy} onclick={() => void copyLast()}>Copy last week</button>
   </div>
+  <a class="btn shop-link" href={`#/shop/${start}`}>🛒 Shopping list</a>
   <a class="freezer-link muted" href="#/freezer">Freezer{frozenPortions ? ` · ${frozenPortions} portion${frozenPortions === 1 ? '' : 's'}` : ''} ›</a>
   {#if notice}<p class="notice muted" role="status">{notice}</p>{/if}
 
@@ -187,6 +188,10 @@
   .review-banner .muted {
     color: #6b4f16;
     font-size: 0.9rem;
+  }
+  .shop-link {
+    width: 100%;
+    margin-bottom: 0.6rem;
   }
   .freezer-link {
     display: inline-block;

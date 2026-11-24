@@ -136,3 +136,22 @@ export interface ParsedNight {
   newName: string | null
   by: 'code' | 'ai'
 }
+
+export type Section = 'market' | 'cold' | 'ambient'
+
+export interface ShoppingItem {
+  id: string
+  name: string
+  section: Section
+  qty: string | null
+  dishIds: string[] // the meals it's for
+  checked: boolean
+  updatedAt: string
+}
+
+export interface ShoppingWeek {
+  week: Day
+  items: ShoppingItem[]
+  nights: { entryId: string; date: Day; dishId: string; optionIds: string[] }[] // meal nights to shop for
+  usual: Record<string, { name: string; qty: string | null }[]> // what each meal needed last time
+}

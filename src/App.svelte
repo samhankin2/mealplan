@@ -9,6 +9,7 @@
   import Rate from './views/Rate.svelte'
   import Review from './views/Review.svelte'
   import Freezer from './views/Freezer.svelte'
+  import Shop from './views/Shop.svelte'
 
   const current = $derived(route())
 
@@ -27,7 +28,7 @@
   <header class="bar">
     <a class="brand" href="#/week">mealplan</a>
     <nav aria-label="Main">
-      <a href="#/week" aria-current={['week', 'review', 'freezer'].includes(current.name) ? 'page' : undefined}>Week</a>
+      <a href="#/week" aria-current={['week', 'review', 'freezer', 'shop'].includes(current.name) ? 'page' : undefined}>Week</a>
       <a href="#/meals" aria-current={['meals', 'meal', 'rate'].includes(current.name) ? 'page' : undefined}>Meals</a>
       <a href="#/settings" aria-current={current.name === 'settings' ? 'page' : undefined}>Settings</a>
     </nav>
@@ -46,6 +47,8 @@
       <Review />
     {:else if current.name === 'freezer'}
       <Freezer />
+    {:else if current.name === 'shop'}
+      <Shop week={current.week} />
     {:else}
       <Settings />
     {/if}

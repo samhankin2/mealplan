@@ -482,6 +482,64 @@ try {
   ok('phone: no horizontal overflow on the meal page', (await overflow()) <= 0, String(await overflow()))
   await shot('14-meal-page.png')
 
+  /* ---------- Shopping list ---------- */
+  // The week planned earlier (next week): Fried rice · Prawn, out, Dahl, Risotto, Spicy surprise bake.
+  const planWeek = (await http('GET', '/api/planner/household', sam.token)).household && (() => { const t = new Date(); t.setDate(t.getDate() + 7); const dow = (t.getDay() + 6) % 7; t.setDate(t.getDate() - dow); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}` })()
+  await evaluate(`location.hash = '#/week/${planWeek}'; return true`)
+  ok('shop: linked from the week', await until(`document.querySelector('.shop-link')`))
+  await click('.shop-link')
+  ok('shop: builder starts at the first meal night', await until(`/Fried rice/.test(document.querySelector('#step-title')?.innerText ?? '')`), await text('#step-title'))
+  ok('shop: out night skipped (4 meal nights + extras)', /1 of 5/.test(await text('.progress')), await text('.progress'))
+  const addTyped = async (value) => {
+    await type('#add-item', value)
+    await evaluate(`document.querySelector('.add button[type=submit]').click(); return true`)
+    await until(`document.querySelector('#add-item')?.value === ''`)
+  }
+  await addTyped('2 onions')
+  await addTyped('coriander')
+  ok('shop: items added for the meal with a section', await until(`/onions \\(2\\)\\s*Cold/i.test(document.querySelector('.added')?.innerText ?? '')`), await text('.added'))
+  await evaluate(`[...document.querySelectorAll('.nav .btn')].find((b) => /Next/.test(b.innerText)).click(); return true`)
+  ok('shop: next meal night', await until(`/Dahl/.test(document.querySelector('#step-title')?.innerText ?? '')`))
+  await addTyped('onions x1')
+  for (let i = 0; i < 3; i++) await evaluate(`[...document.querySelectorAll('.nav .btn')].find((b) => /Next/.test(b.innerText)).click(); return true`)
+  ok('shop: extras step last', await until(`document.querySelector('#step-title')?.innerText === 'Extras'`))
+  await addTyped('milk')
+  await addTyped('tinned tomatoes')
+  await shot('15-shop-build.png')
+  await evaluate(`[...document.querySelectorAll('.nav .btn')].find((b) => /See the list/.test(b.innerText)).click(); return true`)
+  ok('shop: list in shop order', await until(`[...document.querySelectorAll('.group h2')].map((h) => h.innerText).join('|') === 'Cold|Ambient'`), await evaluate(`return [...document.querySelectorAll('.group h2')].map((h) => h.innerText).join('|')`))
+  const onionRow = `[...document.querySelectorAll('.items li')].find((l) => /onions/i.test(l.innerText))`
+  ok('shop: one line for two meals, with nights', /onions \(2 \+ x1\)/i.test(await evaluate(`return ${onionRow}?.innerText ?? ''`)) && /Mon.*Wed|Wed.*Mon/.test(await evaluate(`return ${onionRow}?.innerText ?? ''`)), await evaluate(`return ${onionRow}?.innerText ?? ''`))
+  // Coriander comes from the market: two taps (Cold → Ambient → Market), remembered
+  const coriBtn = `[...document.querySelectorAll('.items li')].find((l) => /coriander/i.test(l.innerText)).querySelector('.sec-btn')`
+  await evaluate(`${coriBtn}.click(); return true`)
+  await until(`/Ambient/.test(${coriBtn}.getAttribute('aria-label'))`)
+  await evaluate(`${coriBtn}.click(); return true`)
+  ok('shop: moved to Market, which comes first', await until(`document.querySelector('.group h2')?.innerText === 'Market'`))
+  // Tick with and without signal
+  await evaluate(`[...document.querySelectorAll('.items li')].find((l) => /milk/i.test(l.innerText)).querySelector('input').click(); return true`)
+  ok('shop: ticked', await (async () => { for (let i = 0; i < 20; i++) { const s = await http('GET', `/api/planner/shopping?week=${planWeek}`, sam.token); if (s.items.find((x) => /^milk$/i.test(x.name))?.checked) return true; await sleep(150) } return false })())
+  await send('Network.enable')
+  await send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 })
+  await evaluate(`${onionRow}.querySelector('input').click(); return true`)
+  ok('shop: ticking with no signal waits', await until(`/⏳/.test(${onionRow}?.innerText ?? '')`))
+  await send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 })
+  await evaluate(`window.dispatchEvent(new Event('online')); return true`)
+  ok('shop: sent once back online', await (async () => { for (let i = 0; i < 30; i++) { const s = await http('GET', `/api/planner/shopping?week=${planWeek}`, sam.token); if (s.items.find((x) => /onions/i.test(x.name))?.checked) return true; await sleep(200) } return false })())
+  ok('phone: no horizontal overflow on the list', (await overflow()) <= 0, String(await overflow()))
+  await shot('16-shop-list.png')
+  await evaluate(`[...document.querySelectorAll('.nav .btn')].find((b) => /Clear ticked/.test(b.innerText)).click(); return true`)
+  ok('shop: clear ticked', await until(`/Cleared 2 ticked/.test(document.body.innerText)`))
+
+  // The following week has the same meals (copied): the usual is offered
+  const nextWeek = (() => { const [y, m, dd] = planWeek.split('-').map(Number); const t = new Date(y, m - 1, dd + 7); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}` })()
+  await evaluate(`location.hash = '#/shop/${nextWeek}'; return true`)
+  ok('usual: offered for a meal made before', await until(`/The usual/.test(document.querySelector('.usual')?.innerText ?? '') && /onions/i.test(document.querySelector('.usual')?.innerText ?? '')`), await text('.step'))
+  await evaluate(`[...document.querySelectorAll('.usual .chip')].find((c) => /coriander/i.test(c.innerText)).click(); return true`)
+  await evaluate(`document.querySelector('.usual .btn').click(); return true`)
+  ok('usual: unticked ones stay off', await until(`/onions/i.test(document.querySelector('.added')?.innerText ?? '')`) && !/coriander/i.test(await text('.added')))
+  ok('usual: section remembered (coriander still Market next time)', (await http('POST', '/api/planner/shopping/items', sam.token, { week: nextWeek, name: 'Coriander' })).item.section === 'market')
+
   /* ---------- Sign out ---------- */
   await evaluate(`location.hash = '#/settings'; return true`)
   await until(`[...document.querySelectorAll('button')].some((b) => b.innerText === 'Sign out')`)
