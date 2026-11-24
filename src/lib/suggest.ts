@@ -6,13 +6,14 @@
  * year, rediscover, picks (one of us loves it), want to try, weekend projects.
  */
 import type { Day, FreezerItem, Meal, Member, PlanEntry, Rating } from './types'
+import { stars as starWords, withOptions } from './format.ts'
 
 export type Lane = 'regular' | 'forgotten' | 'freezer' | 'lastYear' | 'rediscover' | 'pick' | 'want' | 'weekend'
 
 export interface Suggestion {
   lane: Lane
   mealId: string
-  title: string // "Dirty cabbage" or "Dirty cabbage · Korean · Beef" (best variation)
+  title: string // "Dirty cabbage" or "Dirty cabbage (Korean, Beef)" (best variation)
   reason: string // why it's here, shown under the title
   score: number // higher first within a lane
   freezerItemId?: string
@@ -86,15 +87,15 @@ export function opinionOf(meal: Meal): Opinion {
   }
 }
 
-/** "Dirty cabbage · Korean · Beef" for the best-rated variation. */
+/** "Dirty cabbage (Korean, Beef)" for the best-rated variation. */
 function titleOf(meal: Meal, best: Rating | undefined): { title: string; optionIds: string[] } {
   const ids = best?.optionId ? best.optionId.split('+') : []
-  // Style reads first, as on the rating screen: "Cajun · Kangaroo".
+  // Style reads first, as on the rating screen: "Cajun, Kangaroo".
   const names = meal.options
     .filter((o) => ids.includes(o.id))
     .sort((a, b) => (a.axis === 'Style' ? -1 : b.axis === 'Style' ? 1 : 0))
     .map((o) => o.name)
-  return { title: [meal.name, ...names].join(' · '), optionIds: ids }
+  return { title: withOptions(meal.name, names), optionIds: ids }
 }
 
 /* ------------------------------------------------------------------ */
@@ -154,26 +155,26 @@ export function suggestAll(input: SuggestInput): Suggestion[] {
     const t = timingOf(meal, (datedBy.get(meal.id) ?? []).sort(), history.importedWeeks, today)
     const { title, optionIds } = titleOf(meal, op.best)
     const add = (lane: Lane, reason: string, score: number) => out.push({ lane, mealId: meal.id, title, reason, score, optionIds })
-    const starText = op.stars ? `★${op.stars}` : 'Liked'
+    const starText = op.stars ? starWords(op.stars) : 'Liked'
     const since = t.undated ? 'not since your Notes' : t.daysSince === Infinity ? 'never made' : `last made ${weeks(t.daysSince)} ago`
 
     const regular = regularOf(meal, t)
     if (regular) {
       if (t.daysSince >= regular.every) {
         const every = regular.every % 7 === 0 ? `Every ${regular.every === 7 ? 'week' : `${regular.every / 7} weeks`}` : `Every ${regular.every} days`
-        add('regular', `${regular.auto ? 'Looks like a regular' : every} · ${since}`, Math.min(t.daysSince / regular.every, 4) + (op.stars ?? 3) / 5)
+        add('regular', `${regular.auto ? 'Looks like a regular' : every}, ${since}`, Math.min(t.daysSince / regular.every, 4) + (op.stars ?? 3) / 5)
       }
       continue // a regular keeps its rhythm; it's never "forgotten"
     }
 
     if (op.liked && t.daysSince >= FORGOTTEN_DAYS && t.daysSince !== Infinity) {
       const overdue = t.cadence ? Math.min(t.daysSince / t.cadence, 3) : 1.5
-      add('forgotten', `${starText} · ${since}`, (op.stars ?? 4) * overdue)
+      add('forgotten', `${starText}, ${since}`, (op.stars ?? 4) * overdue)
     }
     if (lastYear.has(meal.id) && t.daysSince > 21) add('lastYear', `You had this around now last year`, op.stars ?? 3)
-    if (!op.rated && meal.cooked >= 3 && t.daysSince >= FORGOTTEN_DAYS) add('rediscover', `Made ${meal.cooked} times · ${since}`, meal.cooked)
-    if (op.wanted || (meal.cooked === 0 && op.liked)) add('want', op.wanted ? 'You said you want to make this' : `${starText} · not made yet`, (op.stars ?? 3) + (op.wanted ? 1 : 0))
-    if (meal.effort === 3 && op.liked && (op.stars ?? 0) >= 4 && t.daysSince >= 21) add('weekend', `${starText} · worth the effort`, op.stars ?? 4)
+    if (!op.rated && meal.cooked >= 3 && t.daysSince >= FORGOTTEN_DAYS) add('rediscover', `Made ${meal.cooked} times, ${since}`, meal.cooked)
+    if (op.wanted || (meal.cooked === 0 && op.liked)) add('want', op.wanted ? 'You said you want to make this' : `${starText}, not made yet`, (op.stars ?? 3) + (op.wanted ? 1 : 0))
+    if (meal.effort === 3 && op.liked && (op.stars ?? 0) >= 4 && t.daysSince >= 21) add('weekend', `${starText}, worth the effort`, op.stars ?? 4)
 
     // One of us loves it, the other is lukewarm.
     if (members.length >= 2) {
@@ -181,7 +182,7 @@ export function suggestAll(input: SuggestInput): Suggestion[] {
       const [a, b] = members.map((m) => ({ m, s: best(m.id) }))
       const fan = a.s >= 4 && b.s && b.s <= 3 ? a : b.s >= 4 && a.s && a.s <= 3 ? b : null
       const other = fan === a ? b : a
-      if (fan && t.daysSince >= 21) add('pick', `${fan.m.name}'s pick · ★${fan.s} vs ★${other.s}`, fan.s - other.s)
+      if (fan && t.daysSince >= 21) add('pick', `${fan.m.name}'s pick: ${starWords(fan.s)} against ${other.s}`, fan.s - other.s)
     }
   }
 
@@ -193,8 +194,8 @@ export function suggestAll(input: SuggestInput): Suggestion[] {
     out.push({
       lane: 'freezer',
       mealId: meal.id,
-      title: [meal.name, ...names].join(' · '),
-      reason: `×${item.portions}${item.frozenOn ? ` · frozen ${weeks(age)} ago` : ''}`,
+      title: withOptions(meal.name, names),
+      reason: `${item.portions} portion${item.portions === 1 ? '' : 's'}${item.frozenOn ? `, frozen ${weeks(age)} ago` : ''}`,
       score: age, // oldest first
       freezerItemId: item.id,
     })

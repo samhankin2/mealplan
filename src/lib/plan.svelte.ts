@@ -93,13 +93,13 @@ export function searchMeals(list: Meal[], text: string, limit = 8): Meal[] {
     .map((s) => s.meal)
 }
 
-/** "Dirty cabbage · Korean · Beef" for a planned night. */
+/** Title and detail for a planned night: "Dirty cabbage" / "Korean, Beef". */
 export function describe(entry: PlanEntry, meals: Meal[]): { title: string; detail: string } {
   if (entry.kind === 'out') return { title: 'Out', detail: entry.note ?? '' }
   if (entry.kind === 'leftovers') return { title: 'Leftovers', detail: entry.note ?? '' }
   if (entry.kind === 'takeaway') return { title: 'Takeaway', detail: entry.note ?? '' }
   const meal = meals.find((m) => m.id === entry.dishId)
   const options = meal ? meal.options.filter((o) => entry.optionIds.includes(o.id)).map((o) => o.name) : []
-  const first = [entry.kind === 'freezer' ? 'From the freezer' : '', options.join(' · ')].filter(Boolean).join(' · ')
+  const first = [entry.kind === 'freezer' ? 'From the freezer' : '', options.join(', ')].filter(Boolean).join(', ')
   return { title: meal?.name ?? entry.raw ?? 'A meal', detail: [first, entry.note].filter(Boolean).join(' — ') }
 }

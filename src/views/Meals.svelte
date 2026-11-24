@@ -33,7 +33,7 @@
 
 <h1>Meals</h1>
 
-<section class="card game" aria-labelledby="game-title">
+<section class="game" aria-labelledby="game-title">
   <h2 id="game-title" class="visually-hidden">Rating progress</h2>
   <PersonaPicker />
   <div class="progress-row">
@@ -83,7 +83,7 @@
       <li class:in-family={Boolean(meal.family)}>
         <a class="card row" href={`#/meals/${encodeURIComponent(meal.id)}`}>
           <span class="name">{meal.name}</span>
-          <span class="meta muted">{meal.cooked ? `made ${meal.cooked}×` : 'not in history'}{parts[1] > 1 ? ` · ${parts[0]}/${parts[1]} variations` : ''}{w && r ? ` · ${w} to try` : ''}</span>
+          <span class="meta muted">{meal.cooked ? `Made ${meal.cooked} time${meal.cooked === 1 ? '' : 's'}` : 'Not made yet'}{parts[1] > 1 ? `, ${parts[0]} of ${parts[1]} variations rated` : ''}{w && r ? `, ${w} to try` : ''}</span>
           <span class="score" aria-label={r ? `rated ${r.thumbs === 1 ? 'thumbs up' : r.thumbs === -1 ? 'thumbs down' : ''} ${r.stars ? `${r.stars} stars` : ''}` : 'not rated'}>
             {#if r}
               {r.thumbs === 1 ? '👍' : r.thumbs === -1 ? '👎' : ''}{r.stars ? ` ${'★'.repeat(r.stars)}` : ''}
@@ -103,14 +103,14 @@
 
 <style>
   h1 {
-    font-size: 1.6rem;
     margin-bottom: 1rem;
   }
   .game {
     display: grid;
     gap: 0.85rem;
-    padding: 1rem;
+    padding: 0 0 1.25rem;
     margin-bottom: 1rem;
+    border-bottom: 1px solid var(--rule);
   }
   .progress-row {
     display: grid;
@@ -127,7 +127,7 @@
   .bar span {
     display: block;
     height: 100%;
-    background: linear-gradient(90deg, var(--accent), #e2a33b);
+    background: var(--leek);
     border-radius: 999px;
     transition: width 0.4s ease;
   }
@@ -141,15 +141,13 @@
   }
   .board li {
     display: flex;
-    gap: 0.5rem;
-    padding: 0.3rem 0.75rem;
-    border-radius: 999px;
-    background: var(--surface-sunken);
-    font-size: 0.9rem;
+    gap: 0.4rem;
+    font-size: var(--s-1);
+    color: var(--pepper);
   }
   .board li.lead {
-    background: #f7e7c3;
-    color: #5b3d05;
+    color: var(--plum);
+    font-weight: 650;
   }
   .start {
     justify-self: stretch;
@@ -230,8 +228,8 @@
     font-weight: 700;
     padding: 0.15rem 0.55rem;
     border-radius: 999px;
-    background: #f7e7c3;
-    color: #5b3d05;
+    background: var(--honey-soft);
+    color: var(--plum);
   }
   .dot {
     display: inline-block;

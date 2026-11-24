@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Chevron from '../components/Chevron.svelte'
   import { onMount } from 'svelte'
   import PersonaPicker from '../components/PersonaPicker.svelte'
   import RateRows from '../components/RateRows.svelte'
@@ -82,16 +83,16 @@
   <p class="muted">That meal isn't here any more. <a href="#/meals">Back to meals</a></p>
 {:else}
   <nav class="pager" aria-label="Meals">
-    <a class="btn btn-icon" href={prev ? `#/meals/${encodeURIComponent(prev.id)}` : undefined} aria-disabled={!prev} aria-label="Previous meal">‹</a>
+    <a class="btn btn-icon" href={prev ? `#/meals/${encodeURIComponent(prev.id)}` : undefined} aria-disabled={!prev} aria-label="Previous meal"><Chevron dir="left" /></a>
     <a class="all muted" href="#/meals">{index + 1} of {order.length}</a>
-    <a class="btn btn-icon" href={next ? `#/meals/${encodeURIComponent(next.id)}` : undefined} aria-disabled={!next} aria-label="Next meal">›</a>
+    <a class="btn btn-icon" href={next ? `#/meals/${encodeURIComponent(next.id)}` : undefined} aria-disabled={!next} aria-label="Next meal"><Chevron /></a>
   </nav>
 
   <header class="head">
     {#if meal.coverPhotoId}<div class="cover"><Photo id={meal.coverPhotoId} alt={meal.name} size="lg" /></div>{/if}
     <h1>{meal.name}</h1>
     <p class="muted">
-      {meal.family ? `${meal.family} · ` : ''}{meal.cooked ? `Made ${meal.cooked} time${meal.cooked === 1 ? '' : 's'}` : 'From the recipe list'}{meal.aliases.length ? ` · also “${meal.aliases.slice(0, 3).join('”, “')}”` : ''}
+      {meal.family ? `Part of ${meal.family}. ` : ''}{meal.cooked ? `Made ${meal.cooked} time${meal.cooked === 1 ? '' : 's'}.` : 'From the recipe list.'}{meal.aliases.length ? ` Also called “${meal.aliases.slice(0, 3).join('”, “')}”.` : ''}
     </p>
     {#if meal.tips}<p class="tips">Tip: {meal.tips}</p>{/if}
     {#each meal.tipSuggestions as t (t.note)}
@@ -210,7 +211,7 @@
   {#if error}<p class="error" role="alert">{error}</p>{/if}
 
   {#if next}
-    <a class="btn btn-primary next" href={`#/meals/${encodeURIComponent(next.id)}`}>Next: {next.name} ›</a>
+    <a class="btn btn-primary next" href={`#/meals/${encodeURIComponent(next.id)}`}>Next: {next.name}</a>
   {/if}
 {/if}
 

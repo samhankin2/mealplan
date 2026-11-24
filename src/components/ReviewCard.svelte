@@ -3,7 +3,7 @@
   import RatingControl from './RatingControl.svelte'
   import AddPhoto from './AddPhoto.svelte'
   import Photo from './Photo.svelte'
-  import { addDays, shortDate, today, weekDays, weekStart, weekdayName } from '../lib/dates'
+  import { addDays, shortDate, today, weekDays, weekStart, weekdayIndex, weekdayName } from '../lib/dates'
   import { meals, persona, saveMeal } from '../lib/meals.svelte'
   import { describe, searchMeals, setNight } from '../lib/plan.svelte'
   import { opinionOf, reviewCook, updateEntry } from '../lib/review.svelte'
@@ -59,7 +59,7 @@
     })
 </script>
 
-<article class="card review" class:done={entry.status !== 'planned'} aria-labelledby={`rv-${entry.id}`}>
+<article class={`review day-${weekdayIndex(entry.date)}`} class:done={entry.status !== 'planned'} aria-labelledby={`rv-${entry.id}`}>
   <header>
     <span class="when muted">{weekdayName(entry.date)} {shortDate(entry.date)}</span>
     <h2 id={`rv-${entry.id}`}>{shown.title}</h2>
@@ -143,26 +143,30 @@
 </article>
 
 <style>
+  /* A review card wears its night's colour, like the night on the week. */
   .review {
     display: grid;
-    gap: 0.7rem;
-    padding: 0.9rem 1rem 1rem;
+    gap: 0.75rem;
+    padding: 0.9rem 1rem 1rem 0.95rem;
+    border-radius: var(--r-row);
+    border-left: 6px solid var(--day);
+    background: var(--plate);
   }
   .review.done {
-    box-shadow: none;
+    background: color-mix(in srgb, var(--day) var(--tint), var(--plate));
   }
   header {
     display: grid;
     gap: 0.1rem;
   }
   .when {
-    font-size: 0.8rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    font-size: var(--s0);
+    font-weight: 760;
+    font-stretch: 75%;
   }
   h2 {
-    font-size: 1.35rem;
+    font-size: var(--s2);
+    font-stretch: 85%;
   }
   .detail {
     margin: 0;
@@ -189,9 +193,9 @@
     gap: 0.35rem;
   }
   .pick {
-    min-height: 36px;
+    min-height: 38px;
     padding: 0 0.8rem;
-    border-radius: 999px;
+    border-radius: var(--r-row);
     border: 1px solid var(--border-strong);
     background: var(--surface);
     color: var(--text);
@@ -274,7 +278,7 @@
   .step {
     width: 40px;
     height: 40px;
-    border-radius: 999px;
+    border-radius: var(--r-row);
     border: 1px solid var(--border-strong);
     background: var(--surface);
     color: var(--text);

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Chevron from '../components/Chevron.svelte'
   import { onMount } from 'svelte'
   import RateRows from '../components/RateRows.svelte'
   import { isRated, isStarted, loadMeals, meals, milestone, nextUnrated, persona, ratedCount, ratedParts, removeMeal, restoreMeal, saveMeal } from '../lib/meals.svelte'
@@ -111,7 +112,7 @@
 
 <div class="page">
   <div class="progress-row">
-    <a class="back" href="#/meals" aria-label="Back to meals">‹</a>
+    <a class="back" href="#/meals" aria-label="Back to meals"><Chevron dir="left" /></a>
     <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax={total} aria-valuenow={done} aria-label="Meals rated">
       <span style={`width: ${pct}%`}></span>
     </div>
@@ -144,7 +145,7 @@
         {#if error}<p class="error" role="alert">{error}</p>{/if}
         <footer>
           <a class="detail muted" href={`#/meals/${encodeURIComponent(current.id)}`}>Tags & notes</a>
-          <button class="btn btn-primary" type="button" onclick={next}>{isStarted(current, persona.value) ? 'Next ›' : 'Skip ›'}</button>
+          <button class="btn btn-primary" type="button" onclick={next}>{isStarted(current, persona.value) ? 'Next' : 'Skip'}</button>
         </footer>
         {#key pop}{#if pop}<span class="plus" aria-hidden="true">+1</span>{/if}{/key}
       </article>
@@ -205,7 +206,7 @@
   .bar span {
     display: block;
     height: 100%;
-    background: linear-gradient(90deg, var(--accent), #e2a33b);
+    background: var(--leek);
     transition: width 0.4s ease;
   }
   .streak {
@@ -229,9 +230,6 @@
       opacity: 0;
       transform: translateY(12px) scale(0.98);
     }
-  }
-  h1 {
-    font-size: 1.6rem;
   }
   .effort {
     display: flex;

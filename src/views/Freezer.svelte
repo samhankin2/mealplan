@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Chevron from '../components/Chevron.svelte'
   import { onMount } from 'svelte'
   import { shortDate } from '../lib/dates'
   import { loadMeals, meals } from '../lib/meals.svelte'
@@ -37,7 +38,7 @@
 </script>
 
 <div class="head">
-  <a class="back muted" href="#/week">‹ Week</a>
+  <a class="back muted" href="#/week"><Chevron dir="left" /> Week</a>
   <h1>Freezer</h1>
 </div>
 <p class="muted">
@@ -93,9 +94,6 @@
     text-decoration: none;
     font-weight: 600;
   }
-  h1 {
-    font-size: 1.6rem;
-  }
   .items {
     list-style: none;
     margin: 1rem 0;
@@ -134,7 +132,7 @@
   .step {
     width: 40px;
     height: 40px;
-    border-radius: 999px;
+    border-radius: var(--r-row);
     border: 1px solid var(--border-strong);
     background: var(--surface);
     color: var(--text);
@@ -167,7 +165,7 @@
   .pick {
     min-height: 36px;
     padding: 0 0.8rem;
-    border-radius: 999px;
+    border-radius: var(--r-row);
     border: 1px solid var(--border-strong);
     background: var(--surface);
     color: var(--text);

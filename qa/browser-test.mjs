@@ -186,7 +186,7 @@ try {
   ok('meals: list shows imported meals, most made first', await until(`document.querySelectorAll('.list .name').length === 6`) && (await evaluate(`return document.querySelector('.list .name').innerText`)) === 'Fried rice')
   ok('meals: progress starts at 0/6', /0\/6/.test(await text('.progress-row')))
   ok('meals: a section heading groups its meals', (await evaluate(`return [...document.querySelectorAll('.list .section h2')].map((e) => e.innerText).join('|')`)) === 'Pulled pork' && (await evaluate(`return document.querySelectorAll('.list .in-family').length`)) === 2)
-  ok('meals: variation count in the list', /0\/6 variations/.test(await text('.list')), await text('.list'))
+  ok('meals: variation count in the list', /0 of 6 variations/.test(await text('.list')), await text('.list'))
   await shot('5-meals.png')
   await evaluate(`document.querySelector('a.start').click(); return true`)
   ok('rate: first card is the most made meal', await until(`(document.querySelector('#meal-name')?.innerText ?? '').startsWith('Fried rice')`))
@@ -404,15 +404,15 @@ try {
 
   // Freezer page and a freezer night
   await evaluate(`location.hash = '#/freezer'; return true`)
-  ok('freezer: lists the stock', await until(`/Fried rice · Prawn/.test(document.querySelector('.items')?.innerText ?? '')`))
-  await click('button[aria-label="One fewer Fried rice · Prawn"]')
+  ok('freezer: lists the stock', await until(`document.querySelector('.items')?.innerText.includes('Fried rice (Prawn)')`))
+  await click('button[aria-label="One fewer Fried rice (Prawn)"]')
   ok('freezer: minus one', await until(`document.querySelector('.items strong')?.innerText === '1'`))
   await shot('12-freezer.png')
   await evaluate(`location.hash = '#/week/${localDay(14)}'; return true`)
   await until(`document.querySelectorAll('.days .day').length === 7`)
   await evaluate(`document.querySelectorAll('.days .day')[6].click(); return true`)
-  ok('night: freezer stock offered', await until(`[...document.querySelectorAll('.chip')].some((b) => /Fried rice · Prawn/.test(b.innerText))`))
-  await evaluate(`[...document.querySelectorAll('.chip')].find((b) => /Fried rice · Prawn/.test(b.innerText)).click(); return true`)
+  ok('night: freezer stock offered', await until(`[...document.querySelectorAll('.chip')].some((b) => b.innerText.includes('Fried rice (Prawn)'))`))
+  await evaluate(`[...document.querySelectorAll('.chip')].find((b) => b.innerText.includes('Fried rice (Prawn)')).click(); return true`)
   ok('night: shows from the freezer', await until(`/From the freezer/.test(document.querySelectorAll('.days .day')[6]?.innerText ?? '')`), await dayText(6))
 
   /* ---------- Suggestions ---------- */
@@ -425,7 +425,7 @@ try {
   await signInAs(sam.token, `#/week/${localDay(28)}`) // a week with nothing planned yet
   ok('ideas: tray shows on a week with free nights', await until(`/Ideas for this week/.test(document.querySelector('.ideas')?.innerText ?? '')`))
   ok('ideas: Risotto is a forgotten favourite', await until(`/Forgotten favourites/i.test(document.querySelector('.ideas')?.innerText ?? '') && /Risotto/.test(document.querySelector('.ideas')?.innerText ?? '')`), await text('.ideas'))
-  ok('ideas: says why', /★5/.test(await text('.ideas')))
+  ok('ideas: says why', /5 stars/.test(await text('.ideas')))
   await shot('13-ideas.png')
   // Place it on a night from the tray
   await evaluate(`[...document.querySelectorAll('.idea')].find((b) => /Risotto/.test(b.innerText)).click(); return true`)
@@ -437,9 +437,9 @@ try {
   const snoozable = await evaluate(`const li = [...document.querySelectorAll('.ideas li')].find((l) => l.querySelector('.not-now')); return li ? li.querySelector('.title').innerText : ''`)
   ok('not now: offered', Boolean(snoozable))
   await evaluate(`[...document.querySelectorAll('.ideas li')].find((l) => l.querySelector('.not-now')).querySelector('.not-now').click(); return true`)
-  const snoozedName = snoozable.split(' · ')[0]
+  const snoozedName = snoozable.split(' (')[0]
   ok('not now: snoozed for both phones', await (async () => { for (let i = 0; i < 30; i++) { const m = (await http('GET', '/api/planner/meals', sam.token)).meals.find((x) => x.name === snoozedName); if (m?.snoozedUntil) return true; await sleep(150) } return false })(), snoozedName)
-  ok('not now: drops out of the tray', await until(`![...document.querySelectorAll('.ideas .title')].some((t) => t.innerText.split(' · ')[0] === ${JSON.stringify(snoozedName)})`))
+  ok('not now: drops out of the tray', await until(`![...document.querySelectorAll('.ideas .title')].some((t) => t.innerText.split(' (')[0] === ${JSON.stringify(snoozedName)})`))
   // A night's top three
   const free = await evaluate(`return [...document.querySelectorAll('.days .day')].findIndex((d) => /Plan dinner/.test(d.innerText))`)
   await evaluate(`document.querySelectorAll('.days .day')[${free}].click(); return true`)
@@ -483,7 +483,7 @@ try {
   await shot('14-meal-page.png')
 
   /* ---------- Shopping list ---------- */
-  // The week planned earlier (next week): Fried rice · Prawn, out, Dahl, Risotto, Spicy surprise bake.
+  // The week planned earlier (next week): Fried rice \(Prawn\), out, Dahl, Risotto, Spicy surprise bake.
   const planWeek = (await http('GET', '/api/planner/household', sam.token)).household && (() => { const t = new Date(); t.setDate(t.getDate() + 7); const dow = (t.getDay() + 6) % 7; t.setDate(t.getDate() - dow); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}` })()
   await evaluate(`location.hash = '#/week/${planWeek}'; return true`)
   ok('shop: linked from the week', await until(`document.querySelector('.shop-link')`))
@@ -509,7 +509,7 @@ try {
   await evaluate(`[...document.querySelectorAll('.nav .btn')].find((b) => /See the list/.test(b.innerText)).click(); return true`)
   ok('shop: list in shop order', await until(`[...document.querySelectorAll('.group h2')].map((h) => h.innerText).join('|') === 'Cold|Ambient'`), await evaluate(`return [...document.querySelectorAll('.group h2')].map((h) => h.innerText).join('|')`))
   const onionRow = `[...document.querySelectorAll('.items li')].find((l) => /onions/i.test(l.innerText))`
-  ok('shop: one line for two meals, with nights', /onions \(2 \+ x1\)/i.test(await evaluate(`return ${onionRow}?.innerText ?? ''`)) && /Mon.*Wed|Wed.*Mon/.test(await evaluate(`return ${onionRow}?.innerText ?? ''`)), await evaluate(`return ${onionRow}?.innerText ?? ''`))
+  ok('shop: one line for two meals, with night tags', await until(`/onions \\(2 \\+ x1\\)/i.test(${onionRow}?.innerText ?? '') && ${onionRow}?.querySelectorAll('.tag').length === 2`), await evaluate(`return ${onionRow}?.innerText ?? ''`))
   // Coriander comes from the market: two taps (Cold → Ambient → Market), remembered
   const coriBtn = `[...document.querySelectorAll('.items li')].find((l) => /coriander/i.test(l.innerText)).querySelector('.sec-btn')`
   await evaluate(`${coriBtn}.click(); return true`)

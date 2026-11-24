@@ -1,5 +1,6 @@
 import { api, ApiError } from './api'
 import type { Day, Meal, Section, ShoppingItem, ShoppingWeek } from './types'
+import { withOptions } from './format'
 
 export const SECTION_ORDER: Section[] = ['market', 'cold', 'ambient']
 export const SECTION_NAMES: Record<Section, string> = { market: 'Market', cold: 'Cold', ambient: 'Ambient' }
@@ -169,5 +170,5 @@ export function mealLabel(meals: Meal[], dishId: string, optionIds: string[]): s
   const meal = meals.find((m) => m.id === dishId)
   if (!meal) return 'A meal'
   const names = meal.options.filter((o) => optionIds.includes(o.id)).map((o) => o.name)
-  return [meal.name, ...names].join(' · ')
+  return withOptions(meal.name, names)
 }

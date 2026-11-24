@@ -68,7 +68,7 @@
   {@const v = ratingFor(meal, null, ratedAs)}
   <div class="single">
     {#if v?.want}
-      <button type="button" class="want-pill lg" aria-pressed="true" onclick={() => toggleWant(null, meal.name)}>{@render wantIcon()} Want to make <span class="muted">· undo</span></button>
+      <button type="button" class="want-pill lg" aria-pressed="true" onclick={() => toggleWant(null, meal.name)}>{@render wantIcon()} Want to make <span class="muted">(undo)</span></button>
     {:else}
       <RatingControl label={meal.name} value={v ?? blank} onchange={(next) => void change(null, meal.name, next)} />
     {/if}
@@ -77,7 +77,7 @@
         <button type="button" class="link" onclick={() => toggleWant(null, meal.name)}>{@render wantIcon()} Haven't had it, want to make</button>
       {/if}
       {#if onremove}
-        <button type="button" class="link danger" onclick={() => void neverHad(null, meal.name)}>Never had it · remove</button>
+        <button type="button" class="link danger" onclick={() => void neverHad(null, meal.name)}>Never had it: remove</button>
       {/if}
     </div>
   </div>
@@ -117,7 +117,7 @@
 {#if hidden.length}
   <div class="hidden-list">
     <button type="button" class="link" aria-expanded={showHidden} onclick={() => (showHidden = !showHidden)}>
-      {hidden.length} never had · {showHidden ? 'hide' : 'put back'}
+      {hidden.length} never had: {showHidden ? 'hide' : 'put back'}
     </button>
     {#if showHidden}
       <ul>
@@ -164,7 +164,7 @@
     background: var(--herb-soft);
   }
   .rows li.wanted {
-    background: #f7e7c3;
+    background: var(--honey-soft);
   }
   .sm li {
     padding-left: 0.5rem;
@@ -240,9 +240,9 @@
     cursor: pointer;
   }
   .want-pill {
-    background: #f7e7c3;
+    background: var(--honey-soft);
     border-color: #c98a1e;
-    color: #5b3d05;
+    color: var(--plum);
   }
   .want-pill.lg {
     min-height: 48px;

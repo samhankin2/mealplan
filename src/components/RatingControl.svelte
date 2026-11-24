@@ -121,6 +121,6 @@
     color: var(--border-strong);
   }
   .star.on {
-    color: #e2a33b;
+    color: var(--honey);
   }
 </style>

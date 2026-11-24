@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { shortDate, weekdayName } from '../lib/dates'
+  import { shortDate, weekdayIndex, weekdayName } from '../lib/dates'
   import { meals } from '../lib/meals.svelte'
   import { setNight } from '../lib/plan.svelte'
   import { notNow } from '../lib/suggestions.svelte'
@@ -37,7 +37,7 @@
 </script>
 
 {#if lanes.length && freeNights.length}
-  <section class="card ideas" aria-labelledby="ideas-title">
+  <section class="ideas" aria-labelledby="ideas-title">
     <div class="ideas-head">
       <h2 id="ideas-title">Ideas for this week</h2>
       <button type="button" class="link" aria-expanded={!collapsed} onclick={() => (collapsed = !collapsed)}>{collapsed ? 'Show' : 'Hide'}</button>
@@ -52,18 +52,18 @@
               <div class="row">
                 <button type="button" class="idea" aria-expanded={open === key(s)} onclick={() => (open = open === key(s) ? null : key(s))}>
                   <span class="title">{s.lane === 'freezer' ? '❄ ' : ''}{s.title}</span>
-                  <span class="reason muted">{s.reason}</span>
+                  <span class="reason">{s.reason}</span>
                 </button>
                 {#if s.lane !== 'freezer'}
                   <button type="button" class="not-now" aria-label={`Not now: ${s.title}`} onclick={() => void snooze(s)}>Not now</button>
                 {/if}
               </div>
               {#if open === key(s)}
-                <div class="nights">
+                <div class="nights" role="group" aria-label={`Plan ${s.title} on`}>
                   {#each freeNights.filter((d) => fitsNight(s, meal, d)) as d (d)}
-                    <button type="button" class="night" onclick={() => void place(s, d)}>{weekdayName(d)} {shortDate(d)}</button>
+                    <button type="button" class={`night day-${weekdayIndex(d)}`} onclick={() => void place(s, d)}>{weekdayName(d)} {shortDate(d)}</button>
                   {:else}
-                    <span class="muted small">No free night suits it (weeknights skip high-effort meals).</span>
+                    <span class="muted small">No free night suits it. Weeknights skip high-effort meals.</span>
                   {/each}
                 </div>
               {/if}
@@ -79,9 +79,10 @@
 <style>
   .ideas {
     display: grid;
-    gap: 0.4rem;
-    padding: 0.85rem 1rem 1rem;
-    margin-bottom: 0.9rem;
+    gap: 0.35rem;
+    margin: 1.75rem 0 0;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--rule);
   }
   .ideas-head {
     display: flex;
@@ -89,83 +90,86 @@
     align-items: baseline;
   }
   h2 {
-    font-size: 1.2rem;
+    font-size: var(--s2);
+    font-stretch: 85%;
   }
   h3 {
-    margin: 0.5rem 0 0.1rem;
-    font-family: var(--font-body);
-    font-size: 0.78rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-muted);
+    margin: 0.75rem 0 0.15rem;
+    font-size: var(--s-1);
+    font-weight: 650;
+    color: var(--pepper);
   }
   ul {
     list-style: none;
     margin: 0;
     padding: 0;
     display: grid;
-    gap: 0.3rem;
+    gap: 0.35rem;
   }
   .row {
     display: flex;
     align-items: stretch;
-    gap: 0.3rem;
+    gap: 0.25rem;
   }
   .idea {
     flex: 1;
     display: grid;
-    gap: 0.05rem;
-    padding: 0.45rem 0.7rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-    background: var(--surface-sunken);
-    color: var(--text);
+    gap: 0.1rem;
+    padding: 0.55rem 0.8rem;
+    border-radius: var(--r-row);
+    border: 1px solid var(--rule);
+    background: var(--plate);
+    color: var(--plum);
     text-align: left;
     cursor: pointer;
     min-width: 0;
   }
+  .idea[aria-expanded='true'] {
+    border-color: var(--plum);
+  }
   .title {
-    font-weight: 600;
+    font-weight: 650;
+    line-height: 1.2;
   }
   .reason {
-    font-size: 0.82rem;
+    font-size: var(--s-1);
+    color: var(--pepper);
   }
   .not-now {
     border: none;
     background: none;
-    color: var(--text-muted);
-    font-size: 0.8rem;
-    font-weight: 600;
+    color: var(--pepper);
+    font-size: var(--s-1);
+    font-weight: 650;
     cursor: pointer;
-    padding: 0 0.4rem;
+    padding: 0 0.5rem;
   }
+  /* Placing an idea: each free night in its own day colour. */
   .nights {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.3rem;
-    padding: 0.4rem 0 0.2rem;
+    gap: 0.35rem;
+    padding: 0.45rem 0 0.25rem;
   }
   .night {
-    min-height: 34px;
-    padding: 0 0.75rem;
-    border-radius: 999px;
-    border: 1px solid var(--accent);
-    background: var(--surface);
-    color: var(--accent);
-    font-weight: 600;
-    font-size: 0.85rem;
+    min-height: 38px;
+    padding: 0 0.8rem 0 0.65rem;
+    border-radius: var(--r-row);
+    border: 0;
+    border-left: 5px solid var(--day);
+    background: color-mix(in srgb, var(--day) var(--tint), var(--plate));
+    color: var(--plum);
+    font-weight: 650;
+    font-size: var(--s-1);
     cursor: pointer;
   }
   .link {
     border: none;
     background: none;
-    color: var(--accent);
-    font-weight: 600;
+    padding: 0;
+    color: var(--pepper);
+    font-weight: 650;
     cursor: pointer;
     text-decoration: underline;
-  }
-  .small {
-    font-size: 0.85rem;
   }
 </style>

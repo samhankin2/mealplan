@@ -32,7 +32,7 @@ function parseHash(hash: string): Route {
   if (parts[0] === 'rate') return { name: 'rate' }
   if (parts[0] === 'review') return { name: 'review' }
   if (parts[0] === 'freezer') return { name: 'freezer' }
-  if (parts[0] === 'shop') return { name: 'shop', week: parts[1] && isDay(parts[1]) ? parts[1] : today() }
+  if (parts[0] === 'shop') return { name: 'shop', week: parts[1] && isDay(parts[1]) ? parts[1] : today() } // no week: this week
   // The week view snaps this to the household's week start (it knows the setting; the hash doesn't).
   const start = parts[0] === 'week' && parts[1] && isDay(parts[1]) ? parts[1] : today()
   return { name: 'week', start }

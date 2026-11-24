@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { shortDate, weekLabel, weekStart, weekdayName } from '../lib/dates'
+  import { shortDate, weekLabel, weekStart, weekdayIndex, weekdayName } from '../lib/dates'
   import { loadMeals, meals } from '../lib/meals.svelte'
   import {
     SECTION_NAMES,
@@ -10,7 +10,6 @@
     clearTicked,
     loadShop,
     mealLabel,
-    nightsFor,
     removeItem,
     setSection,
     shop,
@@ -112,14 +111,13 @@
 </script>
 
 <div class="head">
-  <a class="back muted" href={`#/week/${week}`}>‹ Week</a>
   <h1>Shopping</h1>
 </div>
 <p class="muted sub">{weekLabel(week)}</p>
 
 <div class="tabs" role="tablist" aria-label="Shopping">
   <button type="button" role="tab" aria-selected={mode === 'build'} onclick={() => (mode = 'build')}>Build</button>
-  <button type="button" role="tab" aria-selected={mode === 'list'} onclick={() => (mode = 'list')}>List{data ? ` · ${left}` : ''}</button>
+  <button type="button" role="tab" aria-selected={mode === 'list'} onclick={() => (mode = 'list')}>List{data ? ` (${left})` : ''}</button>
 </div>
 
 {#if shop.error}<p class="error" role="alert">{shop.error}</p>{/if}
@@ -129,8 +127,8 @@
 {:else if mode === 'build'}
   <p class="progress muted">{step + 1} of {steps}</p>
   {#if night}
-    <section class="card step" aria-labelledby="step-title">
-      <p class="when muted">{weekdayName(night.date)} {shortDate(night.date)}</p>
+    <section class={`step night-step day-${weekdayIndex(night.date)}`} aria-labelledby="step-title">
+      <p class="when">{weekdayName(night.date)} {shortDate(night.date)}</p>
       <h2 id="step-title">{mealLabel(meals.list, night.dishId, night.optionIds)}</h2>
       {#if meal?.tips}<p class="tips">Tip: {meal.tips}</p>{/if}
 
@@ -171,7 +169,7 @@
       {/if}
     </section>
   {:else}
-    <section class="card step" aria-labelledby="step-title">
+    <section class="step" aria-labelledby="step-title">
       <h2 id="step-title">Extras</h2>
       <p class="muted small">Milk, bread, snacks, household: anything not for a meal.</p>
       <form class="add" onsubmit={(e) => { e.preventDefault(); void addTyped(null, typed, () => (typed = '')) }}>
@@ -194,11 +192,11 @@
   {/if}
   {#if error}<p class="error" role="alert">{error}</p>{/if}
   <div class="nav">
-    <button class="btn" type="button" disabled={step === 0} onclick={() => go(step - 1)}>‹ Back</button>
+    <button class="btn" type="button" disabled={step === 0} onclick={() => go(step - 1)}>Back</button>
     {#if step < steps - 1}
-      <button class="btn btn-primary" type="button" onclick={() => go(step + 1)}>Next ›</button>
+      <button class="btn btn-primary" type="button" onclick={() => go(step + 1)}>Next</button>
     {:else}
-      <button class="btn btn-primary" type="button" onclick={() => (mode = 'list')}>See the list ›</button>
+      <button class="btn btn-primary" type="button" onclick={() => (mode = 'list')}>See the list</button>
     {/if}
   </div>
 {:else}
@@ -215,13 +213,17 @@
       <h2 id={`sec-${group.section}`}>{SECTION_NAMES[group.section]}</h2>
       <ul class="items">
         {#each group.items as i (i.id)}
-          {@const nightsText = nightsFor(i, data, weekdayName)}
+          {@const forNights = data.nights.filter((n) => i.dishIds.includes(n.dishId))}
           <li class:done={i.checked}>
             <label class="item">
               <input type="checkbox" checked={i.checked} onchange={(e) => void run(() => tick(i, (e.currentTarget as HTMLInputElement).checked))} />
               <span class="what">
                 <span class="name">{i.name}{i.qty ? ` (${i.qty})` : ''}{shop.pending.has(i.id) ? ' ⏳' : ''}</span>
-                {#if nightsText}<span class="muted small">{nightsText}</span>{/if}
+                {#if forNights.length}
+                  <span class="for" aria-label={`For ${forNights.map((n) => weekdayName(n.date)).join(', ')}`}>
+                    {#each forNights as n (n.entryId)}<span class={`tag day-${weekdayIndex(n.date)}`}>{weekdayName(n.date)}</span>{/each}
+                  </span>
+                {/if}
               </span>
             </label>
             <button type="button" class="sec-btn" aria-label={`${i.name}: ${SECTION_NAMES[i.section]}, move to ${SECTION_NAMES[nextSection(i.section)]}`} onclick={() => void run(() => setSection(i as ShoppingItem, nextSection(i.section)))}>{SECTION_NAMES[i.section].slice(0, 1)}</button>
@@ -251,9 +253,6 @@
     text-decoration: none;
     font-weight: 600;
   }
-  h1 {
-    font-size: 1.6rem;
-  }
   .sub {
     margin: 0.1rem 0 0.75rem;
   }
@@ -262,14 +261,14 @@
     grid-template-columns: 1fr 1fr;
     gap: 0.25rem;
     padding: 0.25rem;
-    border-radius: 999px;
+    border-radius: var(--r-row);
     background: var(--surface-sunken);
     margin-bottom: 0.75rem;
   }
   .tabs button {
     min-height: 40px;
     border: none;
-    border-radius: 999px;
+    border-radius: 9px;
     background: transparent;
     color: var(--text-muted);
     font-weight: 700;
@@ -287,18 +286,41 @@
   }
   .step {
     display: grid;
-    gap: 0.7rem;
+    gap: 0.75rem;
     padding: 1rem;
+    border-radius: var(--r-row);
+    background: var(--plate);
+    border: 1px solid var(--rule);
+  }
+  /* A meal night's step wears that night's colour. */
+  .night-step {
+    border: 0;
+    border-left: 6px solid var(--day);
+    padding-left: calc(1rem - 5px);
+  }
+  .for {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.2rem;
+  }
+  .tag {
+    padding: 0.05rem 0.4rem 0.05rem 0.3rem;
+    border-radius: 6px;
+    border-left: 3px solid var(--day);
+    background: color-mix(in srgb, var(--day) var(--tint), var(--plate));
+    font-size: var(--s-1);
+    font-weight: 650;
+    line-height: 1.4;
   }
   .when {
     margin: 0;
-    font-size: 0.8rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    font-weight: 760;
+    font-stretch: 75%;
   }
   .step h2 {
-    font-size: 1.4rem;
+    font-size: var(--s2);
+    font-stretch: 85%;
   }
   .tips {
     margin: 0;
@@ -395,9 +417,8 @@
     margin-bottom: 1rem;
   }
   .group h2 {
-    font-size: 1.15rem;
-    margin-bottom: 0.35rem;
-    color: var(--accent);
+    font-size: var(--s1);
+    margin-bottom: 0.4rem;
   }
   .items {
     list-style: none;
@@ -450,7 +471,7 @@
   .sec-btn {
     width: 34px;
     height: 34px;
-    border-radius: 999px;
+    border-radius: 9px;
     border: 1px solid var(--border-strong);
     background: var(--surface-sunken);
     color: var(--text-muted);

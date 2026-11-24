@@ -1,6 +1,7 @@
 import { api } from './api'
 import { today } from './dates'
 import type { CookReview, FreezerItem, Meal, RatedAs, ReviewEntry } from './types'
+import { withOptions } from './format'
 
 /**
  * The review queue: past meal nights still marked planned. Reviewed ones stay
@@ -71,9 +72,9 @@ export async function addToFreezer(dishId: string, portions: number, optionIds: 
   await loadFreezer()
 }
 
-/** "Palak · Paneer" for a freezer item. */
+/** "Palak (Paneer)" for a freezer item. */
 export function freezerLabel(item: FreezerItem, meals: Meal[]): string {
   const meal = meals.find((m) => m.id === item.dishId)
   const options = meal ? meal.options.filter((o) => item.optionIds.includes(o.id)).map((o) => o.name) : []
-  return [meal?.name ?? 'A meal', ...options].join(' · ')
+  return withOptions(meal?.name ?? 'A meal', options)
 }

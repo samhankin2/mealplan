@@ -1,7 +1,7 @@
 <script lang="ts">
   import Sheet from './Sheet.svelte'
   import { api } from '../lib/api'
-  import { shortDate, weekdayName } from '../lib/dates'
+  import { shortDate, weekdayIndex, weekdayName } from '../lib/dates'
   import { axes, loadMeals, meals } from '../lib/meals.svelte'
   import { clearNight, searchMeals, setNight } from '../lib/plan.svelte'
   import { freezer, freezerLabel, loadFreezer } from '../lib/review.svelte'
@@ -106,7 +106,7 @@
   const fromFreezer = (freezerItemId: string) => run(async () => void (await setNight(start, date, { kind: 'freezer', freezerItemId })))
 </script>
 
-<Sheet title={`${weekdayName(date)} ${shortDate(date)}`} {onclose}>
+<Sheet title={`${weekdayName(date)} ${shortDate(date)}`} day={weekdayIndex(date)} {onclose}>
   {#if chosen}
     <div class="chosen">
       <p class="meal-name">{chosen.name}</p>
@@ -188,7 +188,7 @@
   .kind {
     flex: 1;
     min-height: 40px;
-    border-radius: 999px;
+    border-radius: var(--r-row);
     border: 1px solid var(--border-strong);
     background: var(--surface);
     color: var(--text);
@@ -268,11 +268,8 @@
     margin: 0.85rem 0 0.35rem;
     font-size: 0.85rem;
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
+      }
   .axis span {
-    text-transform: none;
     font-weight: 400;
     letter-spacing: 0;
   }

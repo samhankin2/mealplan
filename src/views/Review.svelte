@@ -1,9 +1,10 @@
 <script lang="ts">
+  import Chevron from '../components/Chevron.svelte'
   import { onMount } from 'svelte'
   import NightSheet from '../components/NightSheet.svelte'
   import PersonaPicker from '../components/PersonaPicker.svelte'
   import ReviewCard from '../components/ReviewCard.svelte'
-  import { addDays, shortDate, today, weekStart, weekdayName } from '../lib/dates'
+  import { addDays, shortDate, today, weekStart, weekdayIndex, weekdayName } from '../lib/dates'
   import { loadMeals } from '../lib/meals.svelte'
   import { loadWeek, plan } from '../lib/plan.svelte'
   import { loadReview, review, reviewCook, updateEntry } from '../lib/review.svelte'
@@ -75,7 +76,7 @@
 </script>
 
 <div class="head">
-  <a class="back muted" href="#/week">‹ Week</a>
+  <a class="back muted" href="#/week"><Chevron dir="left" /> Week</a>
   <h1>Review</h1>
 </div>
 <PersonaPicker />
@@ -92,7 +93,7 @@
   </div>
 {:else}
   {#if done < review.entries.length || filled}
-    <form class="card line" onsubmit={(e) => { e.preventDefault(); void fillFromLine() }}>
+    <form class="line" onsubmit={(e) => { e.preventDefault(); void fillFromLine() }}>
       <label for="review-line">Say it in one line</label>
       <input id="review-line" placeholder="all good except the risotto, too much faff" maxlength="1000" bind:value={line} />
       <button class="btn btn-primary" type="submit" disabled={filling || !line.trim()}>{filling ? 'Reading…' : 'Fill in'}</button>
@@ -119,7 +120,7 @@
     <p class="muted small">Add a dinner on a night that wasn't planned, then review it here.</p>
     <div class="picks">
       {#each emptyPast as d (d)}
-        <button type="button" class="pick" onclick={() => (adding = d)}>{weekdayName(d)} {shortDate(d)}</button>
+        <button type="button" class={`pick day-${weekdayIndex(d)}`} onclick={() => (adding = d)}>{weekdayName(d)} {shortDate(d)}</button>
       {/each}
     </div>
   </section>
@@ -140,14 +141,14 @@
     text-decoration: none;
     font-weight: 600;
   }
-  h1 {
-    font-size: 1.6rem;
-  }
   .line {
     display: grid;
     gap: 0.5rem;
     padding: 0.9rem 1rem;
     margin-top: 0.75rem;
+    border-radius: var(--r-row);
+    background: var(--plate);
+    border: 1px solid var(--rule);
   }
   .line label {
     font-weight: 700;
@@ -201,14 +202,15 @@
     gap: 0.35rem;
   }
   .pick {
-    min-height: 36px;
-    padding: 0 0.8rem;
-    border-radius: 999px;
-    border: 1px dashed var(--border-strong);
+    min-height: 38px;
+    padding: 0 0.8rem 0 0.65rem;
+    border-radius: var(--r-row);
+    border: 1.5px dashed var(--rule-strong);
+    border-left: 5px solid var(--day);
     background: transparent;
-    color: var(--text);
-    font-weight: 600;
-    font-size: 0.9rem;
+    color: var(--plum);
+    font-weight: 650;
+    font-size: var(--s-1);
     cursor: pointer;
   }
 </style>

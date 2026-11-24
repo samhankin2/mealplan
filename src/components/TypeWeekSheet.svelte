@@ -1,7 +1,7 @@
 <script lang="ts">
   import Sheet from './Sheet.svelte'
   import { api } from '../lib/api'
-  import { shortDate, weekdayName } from '../lib/dates'
+  import { shortDate, weekdayIndex, weekdayName } from '../lib/dates'
   import { loadMeals, meals } from '../lib/meals.svelte'
   import { loadWeek, searchMeals } from '../lib/plan.svelte'
   import type { Day, ParsedNight } from '../lib/types'
@@ -88,7 +88,7 @@
     <p class="muted hint">Check these, then add them to the week. Nights already planned get replaced.</p>
     <ul class="rows">
       {#each rows as r, i (r.date + i)}
-        <li class:off={!r.keep} class:unsure={r.kind === 'dish' && r.dishId !== null && r.confidence < 0.85 && !r.corrected}>
+        <li class={`day-${weekdayIndex(r.date)}`} class:off={!r.keep} class:unsure={r.kind === 'dish' && r.dishId !== null && r.confidence < 0.85 && !r.corrected}>
           <div class="day">
             <strong>{weekdayName(r.date)}</strong>
             <span class="muted">{shortDate(r.date)}</span>
@@ -97,11 +97,11 @@
             {#if r.kind !== 'dish'}
               <span class="meal">{KIND_LABEL[r.kind]}</span>
             {:else if r.dishId}
-              <span class="meal">{nameOf(r.dishId)}{#if optionNames(r).length}<span class="muted"> · {optionNames(r).join(' · ')}</span>{/if}</span>
+              <span class="meal">{nameOf(r.dishId)}{#if optionNames(r).length}<span class="muted"> ({optionNames(r).join(', ')})</span>{/if}</span>
             {:else}
               <span class="meal new">New: {r.newName}</span>
             {/if}
-            <span class="typed muted">“{r.typed}”{r.kind === 'dish' && r.dishId && r.confidence < 0.85 && !r.corrected ? ' · check this' : ''}</span>
+            <span class="typed muted">“{r.typed}”{r.kind === 'dish' && r.dishId && r.confidence < 0.85 && !r.corrected ? ', check this' : ''}</span>
             {#if fixing === i}
               <label class="visually-hidden" for={`fix-${i}`}>Which meal?</label>
               <input id={`fix-${i}`} class="fix" type="search" placeholder="Which meal?" bind:value={fixQuery} />
@@ -165,11 +165,12 @@
     padding: 0.55rem 0.6rem;
     border-radius: var(--radius-sm);
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid var(--rule);
+    border-left: 5px solid var(--day);
   }
   .rows li.unsure {
-    border-color: #e2a33b;
-    background: #fdf6e6;
+    border-color: var(--honey);
+    background: var(--honey-soft);
   }
   .rows li.off {
     opacity: 0.45;
@@ -200,7 +201,7 @@
   .small {
     min-height: 32px;
     padding: 0 0.6rem;
-    border-radius: 999px;
+    border-radius: var(--r-row);
     border: 1px solid var(--border-strong);
     background: var(--surface);
     color: var(--text);

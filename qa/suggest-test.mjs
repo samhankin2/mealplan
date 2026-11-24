@@ -71,7 +71,7 @@ ok('opinion: all thumbs down is disliked', opinionOf(meals.find((m) => m.name ==
 ok('forgotten: 9 weeks and loved', lane('forgotten').includes('Old favourite'))
 ok('forgotten: undated Notes favourite counts', lane('forgotten').includes('Notes-only favourite'))
 ok('forgotten: 2 weeks ago is not forgotten', !lane('forgotten').includes('Recent favourite'))
-ok('forgotten: best variation named', lane('forgotten').includes('Dirty cabbage · Korean · Beef'), lane('forgotten').join('|'))
+ok('forgotten: best variation named', lane('forgotten').includes('Dirty cabbage (Korean, Beef)'), lane('forgotten').join('|'))
 ok('never: disliked never suggested', !has('Disliked'))
 ok('never: never-suggest respected', !has('Never suggested'))
 ok('never: snoozed respected', !has('Snoozed'))
