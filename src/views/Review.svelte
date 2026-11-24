@@ -6,7 +6,9 @@
   import { addDays, shortDate, today, weekStart, weekdayName } from '../lib/dates'
   import { loadMeals } from '../lib/meals.svelte'
   import { loadWeek, plan } from '../lib/plan.svelte'
-  import { loadReview, review } from '../lib/review.svelte'
+  import { loadReview, review, reviewCook, updateEntry } from '../lib/review.svelte'
+  import { api } from '../lib/api'
+  import { persona } from '../lib/meals.svelte'
   import { app } from '../lib/state.svelte'
   import type { Day } from '../lib/types'
 
@@ -38,6 +40,34 @@
       .reverse(),
   )
 
+  // "All good except the risotto, too much faff": fill the cards from one line.
+  let line = $state('')
+  let filling = $state(false)
+  let filled = $state('')
+  async function fillFromLine(): Promise<void> {
+    filling = true
+    filled = ''
+    try {
+      const { items } = await api.parseReview(today(), line.trim())
+      const waiting = new Set(review.entries.filter((e) => e.status === 'planned').map((e) => e.id))
+      let n = 0
+      for (const it of items) {
+        if (!waiting.has(it.entryId)) continue
+        await updateEntry(it.entryId, { status: it.status, ...(it.note ? { cookNote: it.note } : {}) })
+        if (it.status === 'cooked' && (it.stars !== null || it.thumbs !== null)) {
+          await reviewCook(it.entryId, persona.value, { thumbs: it.thumbs, stars: it.stars })
+        }
+        n++
+      }
+      filled = n ? `Filled in ${n} dinner${n === 1 ? '' : 's'}. Check them below and change anything that's off.` : "Couldn't match that to any dinner. Try naming the meals."
+      if (n) line = ''
+    } catch (e) {
+      filled = e instanceof Error ? e.message : String(e)
+    } finally {
+      filling = false
+    }
+  }
+
   async function closeAdd(): Promise<void> {
     adding = null
     await loadReview()
@@ -61,6 +91,14 @@
     <a class="btn btn-primary" href="#/week">Back to the week</a>
   </div>
 {:else}
+  {#if done < review.entries.length || filled}
+    <form class="card line" onsubmit={(e) => { e.preventDefault(); void fillFromLine() }}>
+      <label for="review-line">Say it in one line</label>
+      <input id="review-line" placeholder="all good except the risotto, too much faff" maxlength="1000" bind:value={line} />
+      <button class="btn btn-primary" type="submit" disabled={filling || !line.trim()}>{filling ? 'Reading…' : 'Fill in'}</button>
+      {#if filled}<p class="muted small" role="status">{filled}</p>{/if}
+    </form>
+  {/if}
   <p class="progress muted" aria-live="polite">{done} of {review.entries.length} reviewed</p>
   <div class="list">
     {#each review.entries as entry (entry.id)}
@@ -104,6 +142,22 @@
   }
   h1 {
     font-size: 1.6rem;
+  }
+  .line {
+    display: grid;
+    gap: 0.5rem;
+    padding: 0.9rem 1rem;
+    margin-top: 0.75rem;
+  }
+  .line label {
+    font-weight: 700;
+  }
+  .line input {
+    min-height: 44px;
+    padding: 0 0.8rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: var(--bg);
   }
   .progress {
     margin: 0.75rem 0 0.5rem;

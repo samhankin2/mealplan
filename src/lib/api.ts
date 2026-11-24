@@ -27,7 +27,25 @@ function baseUrl(): string {
   return (configured || window.location.origin).replace(/\/+$/, '')
 }
 
-/** The only fetch in the app. Talks to the HealthLog API. */
+/** Binary in or out (photos): the same base and token as `request`, no JSON. */
+async function binary(path: string, init: { method?: string; body?: Blob; type?: string } = {}): Promise<Response> {
+  const headers = new Headers(init.type ? { 'Content-Type': init.type } : undefined)
+  const token = getToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  let response: Response
+  try {
+    response = await fetch(`${baseUrl()}/api${path}`, { method: init.method ?? 'GET', headers, body: init.body })
+  } catch {
+    throw new ApiError('Could not reach the server. Check your connection and try again.', 0)
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new ApiError(payload && typeof payload.error === 'string' ? payload.error : `Request failed (${response.status})`, response.status)
+  }
+  return response
+}
+
+/** The only JSON fetch in the app. Talks to the HealthLog API. */
 async function request<T>(
   path: string,
   init: { method?: string; body?: unknown } = {},
@@ -101,7 +119,7 @@ export const api = {
 
   updateMeal(
     id: string,
-    patch: Partial<Pick<Meal, 'tags' | 'suggestedTags' | 'effort' | 'tips' | 'neverSuggest'>> & { archived?: boolean },
+    patch: Partial<Pick<Meal, 'tags' | 'suggestedTags' | 'effort' | 'tips' | 'neverSuggest' | 'regularEveryDays' | 'coverPhotoId'>> & { archived?: boolean },
   ): Promise<Ok & { meal: Meal | null }> {
     return request(`/planner/meals/${encodeURIComponent(id)}`, { method: 'PUT', body: patch })
   },
@@ -193,5 +211,34 @@ export const api = {
 
   setFreezerPortions(id: string, portions: number): Promise<Ok & { item: FreezerItem }> {
     return request(`/planner/freezer/${encodeURIComponent(id)}`, { method: 'PUT', body: { portions } })
+  },
+
+  async uploadPhoto(dishId: string, entryId: string | null, jpeg: Blob): Promise<{ id: string }> {
+    const q = `?dishId=${encodeURIComponent(dishId)}${entryId ? `&entryId=${encodeURIComponent(entryId)}` : ''}`
+    const res = await binary(`/planner/photos${q}`, { method: 'POST', body: jpeg, type: 'image/jpeg' })
+    return (await res.json()).photo
+  },
+
+  async photo(id: string): Promise<Blob> {
+    return (await binary(`/planner/photos/${encodeURIComponent(id)}`)).blob()
+  },
+
+  deletePhoto(id: string): Promise<Ok> {
+    return request(`/planner/photos/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+
+  parseReview(
+    today: Day,
+    text: string,
+  ): Promise<Ok & { items: { entryId: string; status: 'cooked' | 'skipped'; stars: number | null; thumbs: -1 | 1 | null; note: string | null }[]; by: string }> {
+    return request('/planner/parse-review', { method: 'POST', body: { today, text } }, { timeoutMs: 40_000 })
+  },
+
+  history(): Promise<Ok & { entries: { dishId: string; date: Day }[]; importedWeeks: number }> {
+    return request('/planner/history')
+  },
+
+  snooze(mealId: string, today: Day, days = 21): Promise<Ok & { until: Day | null }> {
+    return request(`/planner/meals/${encodeURIComponent(mealId)}/snooze`, { method: 'PUT', body: { today, days } })
   },
 }

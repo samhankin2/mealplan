@@ -62,6 +62,11 @@ export interface Meal {
   lastCooked: Day | null
   ratings: Rating[]
   hidden: string[] // variation / combination keys taken off the list ("never had it")
+  regularEveryDays: number | null // a regular: suggest again after this many days
+  coverPhotoId: string | null
+  snoozedUntil: Day | null // "not now": out of suggestions until then
+  photos: { id: string; entryId: string | null; createdAt: string }[]
+  tipSuggestions: { note: string; count: number }[] // cook notes written 2+ times
   notes: MealNote[]
 }
 

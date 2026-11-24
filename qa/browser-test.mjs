@@ -415,6 +415,73 @@ try {
   await evaluate(`[...document.querySelectorAll('.chip')].find((b) => /Fried rice · Prawn/.test(b.innerText)).click(); return true`)
   ok('night: shows from the freezer', await until(`/From the freezer/.test(document.querySelectorAll('.days .day')[6]?.innerText ?? '')`), await dayText(6))
 
+  /* ---------- Suggestions ---------- */
+  // Make Risotto a clear forgotten favourite: loved, last cooked 6 weeks ago.
+  const risotto = (await http('GET', '/api/planner/meals', sam.token)).meals.find((m) => m.name === 'Risotto')
+  const old = (await http('PUT', `/api/planner/slots/${localDay(-42)}`, sam.token, { dishId: risotto.id })).entry
+  await http('PUT', `/api/planner/entries/${old.id}`, sam.token, { status: 'cooked' })
+  await http('PUT', '/api/planner/ratings', sam.token, { dishId: risotto.id, optionId: risotto.options[0].id, ratedAs: 'both', thumbs: 1, stars: 5 })
+  await evaluate(`location.hash = '#/week/${localDay(7)}'; return true`)
+  await signInAs(sam.token, `#/week/${localDay(28)}`) // a week with nothing planned yet
+  ok('ideas: tray shows on a week with free nights', await until(`/Ideas for this week/.test(document.querySelector('.ideas')?.innerText ?? '')`))
+  ok('ideas: Risotto is a forgotten favourite', await until(`/Forgotten favourites/i.test(document.querySelector('.ideas')?.innerText ?? '') && /Risotto/.test(document.querySelector('.ideas')?.innerText ?? '')`), await text('.ideas'))
+  ok('ideas: says why', /★5/.test(await text('.ideas')))
+  await shot('13-ideas.png')
+  // Place it on a night from the tray
+  await evaluate(`[...document.querySelectorAll('.idea')].find((b) => /Risotto/.test(b.innerText)).click(); return true`)
+  await until(`document.querySelector('.ideas .night')`)
+  await evaluate(`document.querySelector('.ideas .night').click(); return true`)
+  ok('ideas: placed on a night, best variation picked', await until(`[...document.querySelectorAll('.days .day')].some((d) => /Risotto/.test(d.innerText) && new RegExp(${JSON.stringify(risotto.options[0].name)}).test(d.innerText))`))
+  ok('balance: strip shows once a night is planned', await until(`/veggie/.test(document.querySelector('.balance')?.innerText ?? '')`), await text('.balance'))
+  // Not now, on a row that offers it (freezer rows don't)
+  const snoozable = await evaluate(`const li = [...document.querySelectorAll('.ideas li')].find((l) => l.querySelector('.not-now')); return li ? li.querySelector('.title').innerText : ''`)
+  ok('not now: offered', Boolean(snoozable))
+  await evaluate(`[...document.querySelectorAll('.ideas li')].find((l) => l.querySelector('.not-now')).querySelector('.not-now').click(); return true`)
+  const snoozedName = snoozable.split(' · ')[0]
+  ok('not now: snoozed for both phones', await (async () => { for (let i = 0; i < 30; i++) { const m = (await http('GET', '/api/planner/meals', sam.token)).meals.find((x) => x.name === snoozedName); if (m?.snoozedUntil) return true; await sleep(150) } return false })(), snoozedName)
+  ok('not now: drops out of the tray', await until(`![...document.querySelectorAll('.ideas .title')].some((t) => t.innerText.split(' · ')[0] === ${JSON.stringify(snoozedName)})`))
+  // A night's top three
+  const free = await evaluate(`return [...document.querySelectorAll('.days .day')].findIndex((d) => /Plan dinner/.test(d.innerText))`)
+  await evaluate(`document.querySelectorAll('.days .day')[${free}].click(); return true`)
+  ok('night ideas: offered for the night', await until(`/Ideas for/i.test(document.querySelector('.sheet')?.innerText ?? '')`), JSON.stringify((await text('.sheet')).slice(0, 300)) + ' errors: ' + errors.join(' / '))
+  await evaluate(`document.querySelector('.sheet .close')?.click(); return true`)
+
+  /* ---------- One-line review, photo, meal page extras ---------- */
+  const dahl = (await http('GET', '/api/planner/meals', sam.token)).meals.find((m) => m.name === 'Dahl')
+  await http('PUT', `/api/planner/slots/${localDay(-5)}`, sam.token, { dishId: dahl.id })
+  await http('PUT', `/api/planner/slots/${localDay(-4)}`, sam.token, { dishId: risotto.id })
+  await evaluate(`location.hash = '#/review'; return true`)
+  ok('one line: box offered', await until(`document.querySelector('#review-line')`))
+  await type('#review-line', 'all good except the dahl, too much faff')
+  await evaluate(`document.querySelector('.line button[type=submit]').click(); return true`)
+  ok('one line: filled in', await until(`/Filled in 2 dinners/.test(document.querySelector('.line')?.innerText ?? '')`), JSON.stringify(await text('.line')) + ' cards: ' + JSON.stringify(await text('.list')).slice(0, 300))
+  const queue = (await http('GET', `/api/planner/review?today=${localDay(0)}`, sam.token)).entries
+  ok('one line: nothing left waiting', queue.length === 0, String(queue.length))
+  const dahlNight = (await http('GET', `/api/planner/week?start=${localDay(-5)}`, sam.token)).week.entries.find((e) => e.date === localDay(-5))
+  ok('one line: the faff note on the dahl', dahlNight.cookNote === 'too much faff', dahlNight.cookNote)
+
+  // Photo from a review card: make a real JPEG in the page, then pick it as a file
+  const dataUrl = await evaluate(`const c = document.createElement('canvas'); c.width = 64; c.height = 48; const g = c.getContext('2d'); g.fillStyle = '#b4472b'; g.fillRect(0, 0, 64, 48); return c.toDataURL('image/jpeg', 0.9)`)
+  const jpgPath = path.join(dataDir, 'dinner.jpg')
+  fs.writeFileSync(jpgPath, Buffer.from(dataUrl.split(',')[1], 'base64'))
+  await evaluate(`[...document.querySelectorAll('.review')].find((c) => /Dahl/.test(c.innerText)).querySelector('.more').click(); return true`)
+  await until(`document.querySelector('.review input[type=file]')`)
+  await send('DOM.enable')
+  const { root } = await send('DOM.getDocument', { depth: -1 })
+  const { nodeId } = await send('DOM.querySelector', { nodeId: root.nodeId, selector: '.review input[type=file]' })
+  await send('DOM.setFileInputFiles', { nodeId, files: [jpgPath] })
+  ok('photo: thumbnail appears on the card', await until(`document.querySelector('.review .pics img')`, 8000))
+  const withPhoto = (await http('GET', '/api/planner/meals', sam.token)).meals.find((m) => m.id === dahl.id)
+  ok('photo: saved, linked to the cook, becomes the cover', withPhoto.photos.length === 1 && withPhoto.photos[0].entryId === dahlNight.id && withPhoto.coverPhotoId === withPhoto.photos[0].id)
+
+  // Meal page: cover, regular, never suggest
+  await evaluate(`location.hash = '#/meals/${dahl.id}'; return true`)
+  ok('meal page: cover photo', await until(`document.querySelector('.cover img')`, 8000))
+  await evaluate(`const s = document.querySelector('#regular'); s.value = '14'; s.dispatchEvent(new Event('change', { bubbles: true })); return true`)
+  ok('meal page: set as a regular', await (async () => { for (let i = 0; i < 20; i++) { if ((await http('GET', '/api/planner/meals', sam.token)).meals.find((m) => m.id === dahl.id).regularEveryDays === 14) return true; await sleep(150) } return false })())
+  ok('phone: no horizontal overflow on the meal page', (await overflow()) <= 0, String(await overflow()))
+  await shot('14-meal-page.png')
+
   /* ---------- Sign out ---------- */
   await evaluate(`location.hash = '#/settings'; return true`)
   await until(`[...document.querySelectorAll('button')].some((b) => b.innerText === 'Sign out')`)

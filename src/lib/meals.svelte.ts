@@ -209,15 +209,21 @@ export async function rate(
 
 export async function saveMeal(
   mealId: string,
-  patch: Partial<Pick<Meal, 'tags' | 'suggestedTags' | 'effort' | 'tips' | 'neverSuggest'>>,
+  patch: Partial<Pick<Meal, 'tags' | 'suggestedTags' | 'effort' | 'tips' | 'neverSuggest' | 'regularEveryDays' | 'coverPhotoId'>>,
 ): Promise<void> {
   const meal = mealById(mealId)
   if (!meal) return
-  const before = { tags: meal.tags, suggestedTags: meal.suggestedTags, effort: meal.effort, tips: meal.tips, neverSuggest: meal.neverSuggest }
+  const before = { ...meal }
   Object.assign(meal, patch)
   try {
+    // Take back only what this save is about (plus tip suggestions, which the
+    // server recomputes): ratings tapped meanwhile are still in flight and the
+    // server's copy may not have them yet.
     const saved = (await api.updateMeal(mealId, patch)).meal
-    if (saved) Object.assign(meal, { tags: saved.tags, suggestedTags: saved.suggestedTags, effort: saved.effort, tips: saved.tips, neverSuggest: saved.neverSuggest })
+    if (saved) {
+      for (const k of Object.keys(patch) as (keyof typeof patch)[]) (meal as unknown as Record<string, unknown>)[k] = saved[k]
+      meal.tipSuggestions = saved.tipSuggestions
+    }
   } catch (e) {
     Object.assign(meal, before)
     throw e

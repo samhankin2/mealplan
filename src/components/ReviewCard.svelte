@@ -1,6 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte'
   import RatingControl from './RatingControl.svelte'
+  import AddPhoto from './AddPhoto.svelte'
+  import Photo from './Photo.svelte'
   import { addDays, shortDate, today, weekDays, weekStart, weekdayName } from '../lib/dates'
   import { meals, persona, saveMeal } from '../lib/meals.svelte'
   import { describe, searchMeals, setNight } from '../lib/plan.svelte'
@@ -22,6 +24,7 @@
   const shown = $derived(describe(entry, meals.list))
   const opinion = $derived(opinionOf(entry, persona.value) ?? { thumbs: null, stars: null })
   const isFreezer = $derived(entry.kind === 'freezer')
+  const photos = $derived(meal?.photos.filter((p) => p.entryId === entry.id) ?? [])
   // Empty nights from today to the end of this week: where a skipped meal can go.
   const startDay = $derived(app.household?.weekStartDay ?? 0)
   const openNights = $derived(weekDays(weekStart(today(), startDay)).concat(weekDays(addDays(weekStart(today(), startDay), 7))).filter((d) => d >= today() && !taken.has(d)).slice(0, 5))
@@ -118,6 +121,12 @@
           <button type="button" class="toggle" aria-pressed={entry.leftovers} onclick={() => void run(() => updateEntry(entry.id, { leftovers: !entry.leftovers }))}>Covered a lunch</button>
           <button type="button" class="toggle" aria-pressed={entry.tweakRetry} onclick={() => void run(() => updateEntry(entry.id, { tweakRetry: !entry.tweakRetry }))}>Tweak and retry</button>
         </div>
+        {#if meal}
+          <div class="pics">
+            {#each photos as p (p.id)}<Photo id={p.id} alt={`${meal.name}, ${shortDate(entry.date)}`} size="sm" />{/each}
+            <AddPhoto dishId={meal.id} entryId={entry.id} />
+          </div>
+        {/if}
         {#if !isFreezer}
           <div class="frozen">
             <span>Froze</span>
@@ -250,6 +259,12 @@
   .toggles {
     display: flex;
     gap: 0.4rem;
+  }
+  .pics {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
   .frozen {
     display: flex;

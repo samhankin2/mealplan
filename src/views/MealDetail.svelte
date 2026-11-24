@@ -2,6 +2,11 @@
   import { onMount } from 'svelte'
   import PersonaPicker from '../components/PersonaPicker.svelte'
   import RateRows from '../components/RateRows.svelte'
+  import AddPhoto from '../components/AddPhoto.svelte'
+  import Photo from '../components/Photo.svelte'
+  import { api } from '../lib/api'
+  import { shortDate, today } from '../lib/dates'
+  import { removePhoto } from '../lib/photos.svelte'
   import { addNote, loadMeals, meals, persona, ratedParts, removeMeal, saveMeal, sortedMeals } from '../lib/meals.svelte'
   import type { Meal } from '../lib/types'
   import { app } from '../lib/state.svelte'
@@ -83,12 +88,63 @@
   </nav>
 
   <header class="head">
+    {#if meal.coverPhotoId}<div class="cover"><Photo id={meal.coverPhotoId} alt={meal.name} size="lg" /></div>{/if}
     <h1>{meal.name}</h1>
     <p class="muted">
       {meal.family ? `${meal.family} · ` : ''}{meal.cooked ? `Made ${meal.cooked} time${meal.cooked === 1 ? '' : 's'}` : 'From the recipe list'}{meal.aliases.length ? ` · also “${meal.aliases.slice(0, 3).join('”, “')}”` : ''}
     </p>
     {#if meal.tips}<p class="tips">Tip: {meal.tips}</p>{/if}
+    {#each meal.tipSuggestions as t (t.note)}
+      <p class="tip-offer">
+        You've noted “{t.note}” {t.count}×.
+        <button type="button" class="link" onclick={() => void run(() => saveMeal(meal.id, { tips: [meal.tips, t.note.replace(/^./, (c) => c.toUpperCase())].filter(Boolean).join('. ') }))}>Make it a tip</button>
+      </p>
+    {/each}
   </header>
+
+  <section class="card block" aria-labelledby="photos-title">
+    <h2 id="photos-title">Photos</h2>
+    {#if meal.photos.length}
+      <ul class="photos">
+        {#each meal.photos as p (p.id)}
+          <li>
+            <Photo id={p.id} alt={`${meal.name}, ${p.createdAt.slice(0, 10)}`} />
+            <span class="photo-acts">
+              {#if meal.coverPhotoId === p.id}
+                <span class="muted small">Cover</span>
+              {:else}
+                <button type="button" class="link small" onclick={() => void run(() => saveMeal(meal.id, { coverPhotoId: p.id }))}>Make cover</button>
+              {/if}
+              <button type="button" class="link small danger" aria-label={`Delete photo from ${p.createdAt.slice(0, 10)}`} onclick={() => window.confirm('Delete this photo?') && void run(() => removePhoto(p.id))}>Delete</button>
+            </span>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+    <AddPhoto dishId={meal.id} />
+  </section>
+
+  <section class="card block" aria-labelledby="suggest-title">
+    <h2 id="suggest-title">Suggestions</h2>
+    <div class="field">
+      <label for="regular">Regular</label>
+      <select id="regular" value={meal.regularEveryDays ?? 0} onchange={(e) => void run(() => saveMeal(meal.id, { regularEveryDays: Number((e.currentTarget as HTMLSelectElement).value) || null }))}>
+        <option value={0}>Not a regular</option>
+        <option value={7}>Every week</option>
+        <option value={14}>Every 2 weeks</option>
+        <option value={21}>Every 3 weeks</option>
+        <option value={28}>Every 4 weeks</option>
+        <option value={42}>Every 6 weeks</option>
+      </select>
+    </div>
+    <label class="check">
+      <input type="checkbox" checked={meal.neverSuggest} onchange={(e) => void run(() => saveMeal(meal.id, { neverSuggest: (e.currentTarget as HTMLInputElement).checked }))} />
+      Never suggest this
+    </label>
+    {#if meal.snoozedUntil && meal.snoozedUntil >= today()}
+      <p class="muted small">Not now until {shortDate(meal.snoozedUntil)}. <button type="button" class="link small" onclick={() => void run(async () => { await api.snooze(meal.id, today(), 0); await loadMeals(true) })}>Suggest again</button></p>
+    {/if}
+  </section>
 
   <section class="card block" aria-labelledby="rate-title">
     <div class="block-head">
@@ -187,6 +243,52 @@
   .tips {
     color: var(--herb);
     font-weight: 600;
+  }
+  .cover {
+    margin-bottom: 0.75rem;
+  }
+  .tip-offer {
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    background: var(--herb-soft);
+  }
+  .link {
+    border: none;
+    background: none;
+    padding: 0;
+    color: var(--accent);
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  .danger {
+    color: var(--danger);
+  }
+  .photos {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .photos li {
+    display: grid;
+    gap: 0.25rem;
+  }
+  .photo-acts {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+  }
+  .check input {
+    width: 20px;
+    height: 20px;
   }
   .block {
     display: grid;

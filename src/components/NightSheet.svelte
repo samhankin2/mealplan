@@ -5,6 +5,11 @@
   import { axes, loadMeals, meals } from '../lib/meals.svelte'
   import { clearNight, searchMeals, setNight } from '../lib/plan.svelte'
   import { freezer, freezerLabel, loadFreezer } from '../lib/review.svelte'
+  import { forNight, suggestAll, type Suggestion } from '../lib/suggest'
+  import { history } from '../lib/suggestions.svelte'
+  import { plan } from '../lib/plan.svelte'
+  import { app } from '../lib/state.svelte'
+  import { today } from '../lib/dates'
   import { onMount } from 'svelte'
 
   onMount(() => void loadFreezer())
@@ -83,6 +88,21 @@
 
   const clear = () => run(() => clearNight(start, date))
 
+  // The best few ideas for this particular night (weeknights skip high-effort meals).
+  const ideas = $derived(
+    forNight(
+      // Freezer stock has its own row below, so it isn't repeated here.
+      suggestAll({ meals: meals.list, history, freezer: [], members: app.household?.members ?? [], today: today(), planned: plan.weeks[start] ?? [] }),
+      meals.list,
+      date,
+    ),
+  )
+  const useIdea = (s: Suggestion) =>
+    run(async () => {
+      if (s.freezerItemId) await setNight(start, date, { kind: 'freezer', freezerItemId: s.freezerItemId })
+      else await setNight(start, date, { kind: 'dish', dishId: s.mealId, optionIds: s.optionIds ?? [] })
+    })
+
   const fromFreezer = (freezerItemId: string) => run(async () => void (await setNight(start, date, { kind: 'freezer', freezerItemId })))
 </script>
 
@@ -111,6 +131,19 @@
       <button type="button" class="kind" onclick={() => void saveKind('leftovers')}>Leftovers</button>
       <button type="button" class="kind" onclick={() => void saveKind('takeaway')}>Takeaway</button>
     </div>
+    {#if ideas.length && !query.trim()}
+      <p class="axis muted">Ideas for {weekdayName(date)}</p>
+      <ul class="results ideas">
+        {#each ideas as s (s.lane + s.mealId)}
+          <li>
+            <button type="button" class="result idea" onclick={() => void useIdea(s)}>
+              <span>{s.lane === 'freezer' ? '❄ ' : ''}{s.title}</span>
+              <span class="muted why">{s.reason}</span>
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
     {#if freezer.items.length && !query.trim()}
       <p class="axis muted">From the freezer</p>
       <div class="chips freezer">
@@ -191,6 +224,21 @@
     font-weight: 600;
     text-align: left;
     cursor: pointer;
+  }
+  .result.idea {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 0.45rem 0.85rem;
+    background: var(--herb-soft);
+    border-color: transparent;
+  }
+  .why {
+    font-size: 0.8rem;
+    font-weight: 400;
+  }
+  .ideas {
+    margin-bottom: 0.25rem;
   }
   .result.new {
     border-style: dashed;

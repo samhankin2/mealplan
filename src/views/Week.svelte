@@ -1,6 +1,9 @@
 <script lang="ts">
   import NightSheet from '../components/NightSheet.svelte'
   import TypeWeekSheet from '../components/TypeWeekSheet.svelte'
+  import IdeasTray from '../components/IdeasTray.svelte'
+  import { suggestAll, weekBalance } from '../lib/suggest'
+  import { history, loadHistory } from '../lib/suggestions.svelte'
   import { addDays, shortDate, today, weekDays, weekdayName, weekLabel, weekStart } from '../lib/dates'
   import { loadMeals, meals } from '../lib/meals.svelte'
   import { copyWeek, describe, entryFor, loadWeek, plan } from '../lib/plan.svelte'
@@ -33,6 +36,14 @@
     void loadFreezer()
   })
   const frozenPortions = $derived(freezer.items.reduce((n, f) => n + f.portions, 0))
+  $effect(() => void loadHistory())
+
+  // Suggestions for this week's free nights (today onwards).
+  const freeNights = $derived(days.filter((d) => d >= todayDay && !entries.some((e) => e.date === d)))
+  const ideas = $derived(
+    suggestAll({ meals: meals.list, history, freezer: freezer.items, members: app.household?.members ?? [], today: todayDay, planned: entries }),
+  )
+  const balance = $derived(weekBalance(entries, meals.list))
 
   async function copyLast(): Promise<void> {
     busy = true
@@ -80,6 +91,14 @@
   </div>
   <a class="freezer-link muted" href="#/freezer">Freezer{frozenPortions ? ` · ${frozenPortions} portion${frozenPortions === 1 ? '' : 's'}` : ''} ›</a>
   {#if notice}<p class="notice muted" role="status">{notice}</p>{/if}
+
+  <IdeasTray {start} all={ideas} {freeNights} />
+
+  {#if planned}
+    <p class="balance muted" aria-label="Week balance">
+      {balance.veggie} veggie · {balance.fresh} new · {balance.repeats.length ? `${balance.repeats.join(', ')} twice` : 'no repeats'}
+    </p>
+  {/if}
   {#if plan.error}<p class="error" role="alert">{plan.error}</p>{/if}
 
   <ol class="days" aria-label={`${planned} of 7 nights planned`}>
@@ -175,6 +194,11 @@
     font-weight: 600;
     text-decoration: none;
     font-size: 0.9rem;
+  }
+  .balance {
+    margin: 0 0 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 600;
   }
   .notice {
     margin: 0 0 0.75rem;
