@@ -247,7 +247,8 @@ try {
   await shot('6d-rate-single.png')
   await evaluate(`[...document.querySelectorAll('.single-actions button')].find((b) => /Never had/.test(b.innerText)).click(); return true`)
   ok('remove meal: gone, on to the next', await until(`(document.querySelector('#meal-name')?.innerText ?? '').startsWith('Pulled pork soup')`, 4000))
-  ok('remove meal: undo offered', /Removed Pulled pork sandwiches/.test(await text('.toast')))
+  // The next meal shows as soon as the list drops it; the undo bar follows once the save returns.
+  ok('remove meal: undo offered', await until(`/Removed Pulled pork sandwiches/.test(document.querySelector('.toast')?.innerText ?? '')`), await text('.toast'))
   await click('.toast button')
   ok('remove meal: undo brings it back', await until(`(document.querySelector('#meal-name')?.innerText ?? '').startsWith('Pulled pork sandwiches')`, 4000))
   await evaluate(`[...document.querySelectorAll('.single-actions button')].find((b) => /want to make/.test(b.innerText)).click(); return true`)
@@ -282,6 +283,70 @@ try {
   ok('detail: tag saved', after.tags.includes('quick'))
   ok('detail: note saved', after.notes.length === 1)
   await evaluate(`[...document.querySelectorAll('[role=radio]')].find((b) => b.innerText === 'Both').click(); return true`)
+
+  /* ---------- Plan a week ---------- */
+  const clickText = (selector, label) => evaluate(`
+    const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.innerText.trim().startsWith(${JSON.stringify(label)}))
+    if (!el) throw new Error('no ' + ${JSON.stringify(`${selector} ${label}`)})
+    el.click(); return true`)
+  const dayText = (i) => evaluate(`return document.querySelectorAll('.days .day')[${i}]?.innerText ?? ''`)
+  // Next week, so it's never in the past and starts empty.
+  await evaluate(`location.hash = '#/week'; return true`)
+  await until(`document.querySelectorAll('.days .day').length === 7`)
+  await click('a[aria-label="Next week"]')
+  ok('week: empty nights invite planning', await until(`/Plan dinner/.test(document.querySelectorAll('.days .day')[0]?.innerText ?? '')`))
+  await evaluate(`document.querySelectorAll('.days .day')[0].click(); return true`)
+  ok('night: sheet opens with search focused', await until(`document.activeElement?.id === 'night-search'`))
+  await type('#night-search', 'fried')
+  ok('night: search finds by name', await until(`[...document.querySelectorAll('.result')].some((b) => b.innerText.startsWith('Fried rice'))`))
+  await clickText('.result', 'Fried rice')
+  await clickText('.chip', 'Prawn')
+  await shot('8-night-sheet.png')
+  await clickText('.btn', 'Save')
+  ok('night: Monday shows the meal and option', await until(`/Fried rice/.test(document.querySelectorAll('.days .day')[0]?.innerText ?? '') && /Prawn/.test(document.querySelectorAll('.days .day')[0]?.innerText ?? '')`), await dayText(0))
+  await evaluate(`document.querySelectorAll('.days .day')[1].click(); return true`)
+  await until(`document.querySelector('.kind')`)
+  await clickText('.kind', 'Out')
+  ok('night: Tuesday out', await until(`/Out/.test(document.querySelectorAll('.days .day')[1]?.innerText ?? '')`))
+
+  // Type the rest of the week
+  await clickText('.tools .btn', 'Type the week')
+  await until(`document.querySelector('#week-text')`)
+  await type('#week-text', 'wed dhal\nthu lemony thing\nfri spicy surprise bake')
+  await clickText('.btn', 'Match meals')
+  ok('type: proposals listed', await until(`document.querySelectorAll('.rows li').length === 3`))
+  ok('type: alias matched (dhal → Dahl)', /Dahl/.test(await evaluate(`return document.querySelectorAll('.rows li')[0].innerText`)))
+  ok('type: unknown text offered as a new meal', /New: Spicy surprise bake/.test(await evaluate(`return document.querySelectorAll('.rows li')[2].innerText`)))
+  // Correct Thursday to Risotto: that also teaches "lemony thing" = Risotto.
+  await evaluate(`[...document.querySelectorAll('.rows li')[1].querySelectorAll('button')].find((b) => b.innerText === 'Change').click(); return true`)
+  await type('#fix-1', 'risot')
+  await until(`[...document.querySelectorAll('.pick')].some((b) => b.innerText === 'Risotto')`)
+  await clickText('.pick', 'Risotto')
+  await shot('9-type-week.png')
+  await clickText('.bottom .btn', 'Add 3')
+  ok('type: nights added', await until(`/Dahl/.test(document.querySelectorAll('.days .day')[2]?.innerText ?? '') && /Risotto/.test(document.querySelectorAll('.days .day')[3]?.innerText ?? '') && /Spicy surprise bake/.test(document.querySelectorAll('.days .day')[4]?.innerText ?? '')`), [await dayText(2), await dayText(3), await dayText(4)].join(' | '))
+  ok('phone: no horizontal overflow on Week', (await overflow()) <= 0, String(await overflow()))
+  await shot('10-week-planned.png')
+  const mealsNow = (await http('GET', '/api/planner/meals', sam.token)).meals
+  ok('type: correction saved as an alias', mealsNow.find((m) => m.name === 'Risotto')?.aliases.includes('lemony thing'))
+  ok('type: new meal created', mealsNow.some((m) => m.name === 'Spicy surprise bake'))
+
+  // Copy into the following week
+  await click('a[aria-label="Next week"]')
+  await until(`/Plan dinner/.test(document.querySelectorAll('.days .day')[0]?.innerText ?? '')`)
+  await clickText('.tools .btn', 'Copy last week')
+  ok('copy: five nights copied', await until(`/Copied 5 nights/.test(document.querySelector('.notice')?.innerText ?? '')`), await text('.notice'))
+  ok('copy: same meals land on the same days', /Fried rice/.test(await dayText(0)) && /Out/.test(await dayText(1)))
+
+  // Week start setting
+  await evaluate(`location.hash = '#/settings'; return true`)
+  await until(`document.querySelector('#week-start')`)
+  await evaluate(`const s = document.querySelector('#week-start'); s.value = '5'; s.dispatchEvent(new Event('change', { bubbles: true })); return true`)
+  await until(`document.querySelector('#week-start')?.value === '5'`)
+  await sleep(400)
+  await evaluate(`location.hash = '#/week'; return true`)
+  ok('week start: Saturday first', await until(`/^Sat/.test(document.querySelectorAll('.days .weekday')[0]?.innerText ?? '')`), await evaluate(`return document.querySelectorAll('.days .weekday')[0]?.innerText`))
+  await http('PUT', '/api/planner/household', sam.token, { weekStartDay: 0 })
 
   /* ---------- Sign out ---------- */
   await evaluate(`location.hash = '#/settings'; return true`)

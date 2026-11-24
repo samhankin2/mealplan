@@ -1,6 +1,6 @@
 import { api, ApiError } from './api'
 import { getToken, setToken } from './auth'
-import { isDay, weekStart } from './dates'
+import { isDay, today } from './dates'
 import type { Day, Household, User } from './types'
 
 export type Route =
@@ -27,7 +27,8 @@ function parseHash(hash: string): Route {
   if (parts[0] === 'meals' && parts[1]) return { name: 'meal', id: decodeURIComponent(parts[1]) }
   if (parts[0] === 'meals') return { name: 'meals' }
   if (parts[0] === 'rate') return { name: 'rate' }
-  const start = parts[0] === 'week' && parts[1] && isDay(parts[1]) ? weekStart(parts[1]) : weekStart()
+  // The week view snaps this to the household's week start (it knows the setting; the hash doesn't).
+  const start = parts[0] === 'week' && parts[1] && isDay(parts[1]) ? parts[1] : today()
   return { name: 'week', start }
 }
 

@@ -1,6 +1,18 @@
 <script lang="ts">
   import { api } from '../lib/api'
+  import { WEEKDAY_NAMES } from '../lib/dates'
   import { app, refreshHousehold, signOut } from '../lib/state.svelte'
+
+  let weekError = $state('')
+  async function setWeekStart(event: Event): Promise<void> {
+    const value = Number((event.currentTarget as HTMLSelectElement).value)
+    weekError = ''
+    try {
+      app.household = (await api.setHousehold({ weekStartDay: value })).household
+    } catch (e) {
+      weekError = e instanceof Error ? e.message : String(e)
+    }
+  }
 
   const household = $derived(app.household)
   const partner = $derived(household?.partner ?? null)
@@ -56,6 +68,19 @@
       <button class="btn btn-primary" type="submit" disabled={busy}>{partner ? 'Change partner' : 'Add partner'}</button>
     </form>
   {/if}
+</section>
+
+<section class="card block" aria-labelledby="week-setting-title">
+  <h2 id="week-setting-title">Week</h2>
+  <div class="field">
+    <label for="week-start">Our week starts on</label>
+    <select id="week-start" value={household?.weekStartDay ?? 0} onchange={(e) => void setWeekStart(e)}>
+      {#each WEEKDAY_NAMES as name, i (name)}
+        <option value={i}>{name}</option>
+      {/each}
+    </select>
+  </div>
+  {#if weekError}<p class="error" role="alert">{weekError}</p>{/if}
 </section>
 
 <section class="card block" aria-labelledby="account-title">

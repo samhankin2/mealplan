@@ -1,5 +1,5 @@
 import { getToken } from './auth'
-import type { Household, Meal, MealNote, Partner, RatedAs, Rating, User } from './types'
+import type { Day, Household, Meal, MealNote, NightKind, ParsedNight, Partner, PlanEntry, RatedAs, Rating, User, Week } from './types'
 
 declare global {
   interface Window {
@@ -123,5 +123,40 @@ export const api = {
 
   addNote(mealId: string, body: string): Promise<Ok & { note: MealNote }> {
     return request(`/planner/meals/${encodeURIComponent(mealId)}/notes`, { method: 'POST', body: { body } })
+  },
+
+  setHousehold(patch: { weekStartDay?: number }): Promise<Ok & { household: Household }> {
+    return request('/planner/household', { method: 'PUT', body: patch })
+  },
+
+  createMeal(name: string): Promise<Ok & { created: boolean; meal: Meal }> {
+    return request('/planner/meals', { method: 'POST', body: { name } })
+  },
+
+  addAlias(mealId: string, alias: string): Promise<Ok & { alias: string }> {
+    return request(`/planner/meals/${encodeURIComponent(mealId)}/aliases`, { method: 'POST', body: { alias } })
+  },
+
+  week(start: Day, options?: RequestOptions): Promise<Ok & { week: Week }> {
+    return request(`/planner/week?start=${encodeURIComponent(start)}`, {}, options)
+  },
+
+  setNight(
+    date: Day,
+    body: { kind: NightKind; dishId?: string | null; optionIds?: string[]; note?: string | null; raw?: string | null },
+  ): Promise<Ok & { entry: PlanEntry }> {
+    return request(`/planner/slots/${encodeURIComponent(date)}`, { method: 'PUT', body })
+  },
+
+  clearNight(date: Day): Promise<Ok> {
+    return request(`/planner/slots/${encodeURIComponent(date)}`, { method: 'DELETE' })
+  },
+
+  copyWeek(from: Day, to: Day): Promise<Ok & { copied: number; week: Week }> {
+    return request('/planner/week/copy', { method: 'POST', body: { from, to } })
+  },
+
+  parseWeek(start: Day, text: string): Promise<Ok & { items: ParsedNight[] }> {
+    return request('/planner/parse-week', { method: 'POST', body: { start, text } }, { timeoutMs: 40_000 })
   },
 }

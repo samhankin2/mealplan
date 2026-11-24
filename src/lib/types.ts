@@ -66,6 +66,43 @@ export interface Meal {
 
 export interface Household {
   id: string
+  weekStartDay: number // 0 = Monday … 6 = Sunday
   members: Member[]
   partner: Partner | null
+}
+
+export type NightKind = 'dish' | 'out' | 'leftovers' | 'takeaway'
+
+/** One planned dinner. */
+export interface PlanEntry {
+  id: string
+  date: Day
+  slot: string
+  kind: NightKind
+  status: 'planned' | 'cooked' | 'skipped' | 'swapped' | 'moved'
+  dishId: string | null
+  optionIds: string[]
+  note: string | null
+  raw: string | null
+  updatedAt: string
+}
+
+export interface Week {
+  start: Day
+  end: Day
+  entries: PlanEntry[]
+}
+
+/** A proposed night from typed text, before it's confirmed. */
+export interface ParsedNight {
+  date: Day
+  raw: string
+  typed: string
+  kind: NightKind
+  dishId: string | null
+  optionIds: string[]
+  confidence: number
+  candidates: { dishId: string; name: string; confidence: number }[]
+  newName: string | null
+  by: 'code' | 'ai'
 }

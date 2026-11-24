@@ -134,7 +134,8 @@ input {
   font-size: 0.9rem;
   font-weight: 600;
 }
-.field input {
+.field input,
+.field select {
   min-height: 46px;
   padding: 0 0.85rem;
   border-radius: var(--radius-sm);

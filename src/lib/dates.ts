@@ -28,11 +28,17 @@ export function today(): Day {
   return toDay(new Date())
 }
 
-/** The Monday on or before `day`. Weeks start on Monday. */
-export function weekStart(day: Day = today()): Day {
-  const offset = (fromDay(day).getDay() + 6) % 7
-  return addDays(day, -offset)
+/** 0 = Monday … 6 = Sunday. */
+export function weekdayIndex(day: Day): number {
+  return (fromDay(day).getDay() + 6) % 7
 }
+
+/** The first day of the week holding `day`; weeks start on `startDay` (0 = Monday, the default). */
+export function weekStart(day: Day = today(), startDay = 0): Day {
+  return addDays(day, -((weekdayIndex(day) - startDay + 7) % 7))
+}
+
+export const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
 export function weekDays(start: Day): Day[] {
   return Array.from({ length: 7 }, (_, i) => addDays(start, i))
