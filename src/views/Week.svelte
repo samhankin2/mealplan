@@ -1,6 +1,6 @@
 <script lang="ts">
   import Chevron from '../components/Chevron.svelte'
-  import NightSheet from '../components/NightSheet.svelte'
+  import PlanNights from '../components/PlanNights.svelte'
   import TypeWeekSheet from '../components/TypeWeekSheet.svelte'
   import IdeasTray from '../components/IdeasTray.svelte'
   import { suggestAll, weekBalance } from '../lib/suggest'
@@ -271,7 +271,7 @@
 {/if}
 
 {#if open}
-  <NightSheet {start} date={open} entry={entryFor(start, open)} onclose={() => (open = null)} />
+  <PlanNights {start} date={open} onclose={() => (open = null)} />
 {/if}
 {#if typing}
   <TypeWeekSheet {start} onclose={() => (typing = false)} />
@@ -336,7 +336,7 @@
     grid-template-columns: 4.6rem minmax(0, 1fr);
     align-items: center;
     gap: 0.6rem;
-    min-height: 68px;
+    min-height: 56px;
     padding: 0.5rem 3rem 0.5rem 1rem;
     border: 1.5px dashed var(--rule-strong);
     border-radius: var(--r-row);
@@ -416,7 +416,7 @@
     line-height: 1;
   }
   .weekday {
-    font-size: var(--s2);
+    font-size: var(--s1);
     font-weight: 760;
     font-stretch: 75%;
     letter-spacing: -0.01em;

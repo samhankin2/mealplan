@@ -80,6 +80,7 @@ const type = (selector, value) => evaluate(`
   Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)})
   el.dispatchEvent(new Event('input', { bubbles: true })); return true`)
 const click = (selector) => evaluate(`document.querySelector(${JSON.stringify(selector)}).click(); return true`)
+const press = async (key) => { await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code: key, windowsVirtualKeyCode: 13 }); await send('Input.dispatchKeyEvent', { type: 'keyUp', key, code: key, windowsVirtualKeyCode: 13 }) }
 const text = (selector) => evaluate(`return document.querySelector(${JSON.stringify(selector)})?.innerText ?? ''`)
 const overflow = () => evaluate('return document.documentElement.scrollWidth - window.innerWidth')
 const signInAs = (token, hash) =>
@@ -296,17 +297,29 @@ try {
   await click('a[aria-label="Next week"]')
   ok('week: empty nights invite planning', await until(`/Plan dinner/.test(document.querySelectorAll('.days .day')[0]?.innerText ?? '')`))
   await evaluate(`document.querySelectorAll('.days .day')[0].click(); return true`)
-  ok('night: sheet opens with search focused', await until(`document.activeElement?.id === 'night-search'`))
-  await type('#night-search', 'fried')
-  ok('night: search finds by name', await until(`[...document.querySelectorAll('.result')].some((b) => b.innerText.startsWith('Fried rice'))`))
-  await clickText('.result', 'Fried rice')
-  await clickText('.chip', 'Prawn')
+  ok('plan: opens on that night with the input focused', await until(`document.activeElement?.id === 'plan-input' && /Mon/.test(document.querySelector('#plan-night')?.innerText ?? '')`))
+  await shot('8a-plan-empty.png')
+  await type('#plan-input', 'fried')
+  ok('plan: matches right under the input', await until(`[...document.querySelectorAll('.planner .pick')].some((b) => b.innerText.startsWith('Fried rice'))`))
   await shot('8-night-sheet.png')
-  await clickText('.btn', 'Save')
+  await clickText('.planner .pick', 'Fried rice')
+  ok('plan: a meal with options asks for one', await until(`[...document.querySelectorAll('.planner .chip')].some((b) => b.innerText === 'Prawn')`))
+  ok('plan: the keyboard stays (input keeps focus)', await until(`document.activeElement?.id === 'plan-input'`))
+  await clickText('.planner .chip', 'Prawn')
+  ok('plan: choosing it moves on to Tuesday', await until(`/Tue/.test(document.querySelector('#plan-night')?.innerText ?? '')`), await text('#plan-night'))
+  ok('plan: the strip shows Monday planned', await until(`document.querySelectorAll('.strip .tile')[0]?.classList.contains('filled')`))
+  await clickText('.planner .kind', 'Out')
+  ok('plan: Out moves on to Wednesday', await until(`/Wed/.test(document.querySelector('#plan-night')?.innerText ?? '')`), await text('#plan-night'))
+  await type('#plan-input', 'fri')
+  await press('Enter')
+  ok('plan: Enter picks the top match', await until(`/Fried rice/.test(document.querySelector('.planner .current')?.innerText ?? '')`), await text('.planner .night'))
+  await click('.planner .night-acts .link:last-child')
+  ok('plan: Clear empties the night', await until(`!document.querySelector('.planner .current')`))
+  await click('.strip .tile[aria-current]')
+  ok('phone: no horizontal overflow while planning', (await overflow()) <= 0, String(await overflow()))
+  await click('.done-btn')
+  ok('plan: Done back to the week', await until(`!document.querySelector('.planner')`))
   ok('night: Monday shows the meal and option', await until(`/Fried rice/.test(document.querySelectorAll('.days .day')[0]?.innerText ?? '') && /Prawn/.test(document.querySelectorAll('.days .day')[0]?.innerText ?? '')`), await dayText(0))
-  await evaluate(`document.querySelectorAll('.days .day')[1].click(); return true`)
-  await until(`document.querySelector('.kind')`)
-  await clickText('.kind', 'Out')
   ok('night: Tuesday out', await until(`/Out/.test(document.querySelectorAll('.days .day')[1]?.innerText ?? '')`))
 
   // Type the rest of the week
@@ -375,9 +388,13 @@ try {
   ok('hold: saved on the server', await (async () => { for (let i = 0; i < 20; i++) { const w = (await http('GET', `/api/planner/week?start=${await evaluate(`return location.hash.split('/')[2]`)}`, sam.token)).week; const dates = w.entries.map((e) => e.date).sort(); if (w.entries.find((e) => e.date === dates[2])?.raw?.match(/lemony|risotto/i)) return true; await sleep(150) } return false })())
   // Without dragging: "Move to" in the night sheet swaps them back.
   await evaluate(`document.querySelectorAll('.days .day')[2].click(); return true`)
-  ok('move to: offered for a planned night', await until(`document.querySelector('.move')`), JSON.stringify({ sheet: await evaluate(`return document.querySelector('.sheet')?.innerText.slice(0, 120) ?? null`), ghost: await evaluate(`return Boolean(document.querySelector('.ghost'))`), errors }))
+  await until(`document.querySelector('.planner .night-acts')`)
+  await clickText('.planner .night-acts .link', 'More')
+  ok('move to: offered under More', await until(`document.querySelector('.move')`), JSON.stringify({ errors }))
   await click('button[aria-label="Swap with Thu"]')
   ok('move to: swapped back', await until(`/Dahl/.test(document.querySelectorAll('.days .day')[2]?.innerText ?? '') && /Risotto/.test(document.querySelectorAll('.days .day')[3]?.innerText ?? '')`), `${await dayText(2)} | ${await dayText(3)}`)
+  await click('.done-btn')
+  await until(`!document.querySelector('.planner')`)
   ok('phone: no horizontal overflow after dragging', (await overflow()) <= 0, String(await overflow()))
 
   // Copy into the following week
@@ -460,9 +477,11 @@ try {
   await evaluate(`location.hash = '#/week/${localDay(14)}'; return true`)
   await until(`document.querySelectorAll('.days .day').length === 7`)
   await evaluate(`document.querySelectorAll('.days .day')[6].click(); return true`)
-  ok('night: freezer stock offered', await until(`[...document.querySelectorAll('.chip')].some((b) => b.innerText.includes('Fried rice (Prawn)'))`))
-  await evaluate(`[...document.querySelectorAll('.chip')].find((b) => b.innerText.includes('Fried rice (Prawn)')).click(); return true`)
+  ok('night: freezer stock offered', await until(`[...document.querySelectorAll('.planner .pick')].some((b) => b.innerText.includes('Fried rice (Prawn)'))`))
+  await evaluate(`[...document.querySelectorAll('.planner .pick')].find((b) => b.innerText.includes('Fried rice (Prawn)')).click(); return true`)
   ok('night: shows from the freezer', await until(`/From the freezer/.test(document.querySelectorAll('.days .day')[6]?.innerText ?? '')`), await dayText(6))
+  await click('.done-btn')
+  await until(`!document.querySelector('.planner')`)
 
   /* ---------- Suggestions ---------- */
   // Make Risotto a clear forgotten favourite: loved, last cooked 6 weeks ago.
@@ -492,8 +511,10 @@ try {
   // A night's top three
   const free = await evaluate(`return [...document.querySelectorAll('.days .day')].findIndex((d) => /Plan dinner/.test(d.innerText))`)
   await evaluate(`document.querySelectorAll('.days .day')[${free}].click(); return true`)
-  ok('night ideas: offered for the night', await until(`/Ideas for/i.test(document.querySelector('.sheet')?.innerText ?? '')`), JSON.stringify((await text('.sheet')).slice(0, 300)) + ' errors: ' + errors.join(' / '))
-  await evaluate(`document.querySelector('.sheet .close')?.click(); return true`)
+  ok('night ideas: offered for the night', await until(`/Ideas for/i.test(document.querySelector('.planner')?.innerText ?? '')`), JSON.stringify((await text('.planner')).slice(0, 300)) + ' errors: ' + errors.join(' / '))
+  await shot('8b-plan-ideas.png')
+  await click('.done-btn')
+  await until(`!document.querySelector('.planner')`)
 
   /* ---------- One-line review, photo, meal page extras ---------- */
   const dahl = (await http('GET', '/api/planner/meals', sam.token)).meals.find((m) => m.name === 'Dahl')
