@@ -67,6 +67,7 @@ export interface Opinion {
   stars: number | null // best stars on any variation
   best: Rating | undefined // the best-rated variation
   wanted: boolean // "want to make" on any variation
+  want: Rating | undefined // the variation we want to make
   rated: boolean
 }
 
@@ -83,6 +84,7 @@ export function opinionOf(meal: Meal): Opinion {
     stars: best?.stars ?? null,
     best,
     wanted: rs.some((r) => r.want),
+    want: rs.find((r) => r.want),
     rated: s.length > 0,
   }
 }
@@ -154,7 +156,7 @@ export function suggestAll(input: SuggestInput): Suggestion[] {
     if (op.disliked) continue
     const t = timingOf(meal, (datedBy.get(meal.id) ?? []).sort(), history.importedWeeks, today)
     const { title, optionIds } = titleOf(meal, op.best)
-    const add = (lane: Lane, reason: string, score: number) => out.push({ lane, mealId: meal.id, title, reason, score, optionIds })
+    const add = (lane: Lane, reason: string, score: number, as = { title, optionIds }) => out.push({ lane, mealId: meal.id, reason, score, ...as })
     const starText = op.stars ? starWords(op.stars) : 'Liked'
     const since = t.undated ? 'not since your Notes' : t.daysSince === Infinity ? 'never made' : `last made ${weeks(t.daysSince)} ago`
 
@@ -173,7 +175,9 @@ export function suggestAll(input: SuggestInput): Suggestion[] {
     }
     if (lastYear.has(meal.id) && t.daysSince > 21) add('lastYear', `You had this around now last year`, op.stars ?? 3)
     if (!op.rated && meal.cooked >= 3 && t.daysSince >= FORGOTTEN_DAYS) add('rediscover', `Made ${meal.cooked} times, ${since}`, meal.cooked)
-    if (op.wanted || (meal.cooked === 0 && op.liked)) add('want', op.wanted ? 'You said you want to make this' : `${starText}, not made yet`, (op.stars ?? 3) + (op.wanted ? 1 : 0))
+    // Named as the variation we said we want, not the best-rated one we've already had.
+    if (op.wanted) add('want', 'You said you want to make this', (op.stars ?? 3) + 1, titleOf(meal, op.want))
+    else if (meal.cooked === 0 && op.liked) add('want', `${starText}, not made yet`, op.stars ?? 3)
     if (meal.effort === 3 && op.liked && (op.stars ?? 0) >= 4 && t.daysSince >= 21) add('weekend', `${starText}, worth the effort`, op.stars ?? 4)
 
     // One of us loves it, the other is lukewarm.

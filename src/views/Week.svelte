@@ -84,6 +84,8 @@
 
   let drafts = $state<Record<Day, string>>({}) // lines typed but not yet saved
   let saving = $state<Record<Day, boolean>>({})
+  // Lines that didn't match a meal: we ask rather than invent a new one.
+  let unmatched = $state<Record<Day, { text: string; newName: string; candidates: { dishId: string; name: string }[] }>>({})
 
   const lineInput = (day: Day) => document.querySelector<HTMLInputElement>(`.days li[data-date="${day}"] input`)
 
@@ -107,6 +109,8 @@
   async function commit(day: Day, value: string): Promise<void> {
     const text = value.trim()
     const entry = entryFor(start, day)
+    if (unmatched[day]?.text === text) return // still waiting on which meal it is
+    delete unmatched[day]
     if (text === lineText(entry)) {
       delete drafts[day]
       return
@@ -123,15 +127,49 @@
         if (r.kind !== 'dish' && r.kind !== 'freezer') {
           await setNight(start, day, { kind: r.kind, raw: r.typed })
         } else {
-          let dishId = r.dishId
-          if (!dishId && r.newName) {
-            dishId = (await api.createMeal(r.newName)).meal.id
-            await loadMeals(true)
+          if (!r.dishId) {
+            // Not sure what this is: keep the line as typed and ask underneath.
+            unmatched[day] = { text, newName: r.newName ?? text, candidates: r.candidates.filter((c) => c.confidence > 0).slice(0, 2) }
+            return
           }
-          if (!dishId) throw new Error(`Couldn't match "${text}" to a meal.`)
-          await setNight(start, day, { kind: 'dish', dishId, optionIds: r.optionIds, raw: r.raw })
+          await setNight(start, day, { kind: 'dish', dishId: r.dishId, optionIds: r.optionIds, raw: r.raw })
         }
       }
+      delete drafts[day]
+    } catch (e) {
+      notice = e instanceof Error ? e.message : String(e)
+    } finally {
+      saving[day] = false
+    }
+  }
+
+  /** "Did you mean Dirty cabbage?": plan it, and remember the words for next time. */
+  async function choose(day: Day, dishId: string): Promise<void> {
+    const u = unmatched[day]
+    if (!u) return
+    saving[day] = true
+    try {
+      await setNight(start, day, { kind: 'dish', dishId, raw: u.text })
+      await api.addAlias(dishId, u.text).catch(() => undefined)
+      void loadMeals(true)
+      delete unmatched[day]
+      delete drafts[day]
+    } catch (e) {
+      notice = e instanceof Error ? e.message : String(e)
+    } finally {
+      saving[day] = false
+    }
+  }
+
+  async function addNew(day: Day): Promise<void> {
+    const u = unmatched[day]
+    if (!u) return
+    saving[day] = true
+    try {
+      const { meal } = await api.createMeal(u.newName)
+      await loadMeals(true)
+      await setNight(start, day, { kind: 'dish', dishId: meal.id, raw: u.text })
+      delete unmatched[day]
       delete drafts[day]
     } catch (e) {
       notice = e instanceof Error ? e.message : String(e)
@@ -306,7 +344,15 @@
             autocomplete="off"
             autocapitalize="sentences"
             enterkeyhint="next" />
-          {#if detail}<span class="detail">{detail}</span>{/if}
+          {#if unmatched[day]}
+            {@const u = unmatched[day]}
+            <span class="ask">
+              {#each u.candidates as c (c.dishId)}
+                <button type="button" class="link" onclick={() => void choose(day, c.dishId)}>{c.name}?</button>
+              {/each}
+              <button type="button" class="link" onclick={() => void addNew(day)}>Add as new meal</button>
+            </span>
+          {:else if detail}<span class="detail">{detail}</span>{/if}
           {#if drag && over === day && drag.from !== day}
             <span class="drop-hint">{entry ? `Swap with ${weekdayName(drag.from)}` : 'Move here'}</span>
           {/if}
@@ -501,6 +547,17 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* Under a line we couldn't place: which meal is it? */
+  .ask .link {
+    text-align: left;
+  }
+  .ask {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem 0.9rem;
+    margin: -0.45rem 0 0.45rem 0.25rem;
+    font-size: var(--s-1);
   }
   .drop-hint {
     position: absolute;

@@ -90,6 +90,17 @@ eq('freezer: oldest first', lane('freezer'), ['Recent favourite', 'Fried rice'])
 ok('last year: around this date', lane('lastYear').includes('Last March'))
 ok('rediscover: made a lot, never rated', lane('rediscover').includes('Unrated old staple'))
 ok('want: wanted meal', lane('want').includes('Want one'))
+{
+  // The bug: wanting Korean, Kangaroo showed the best-rated variation (Chinese, Kangaroo) we'd already made.
+  const opts = [
+    { id: 'ch', axis: 'Style', name: 'Chinese' },
+    { id: 'ko', axis: 'Style', name: 'Korean' },
+    { id: 'ka', axis: 'Protein', name: 'Kangaroo' },
+  ]
+  const dc = meal('Cabbage', { options: opts, cooked: 6, ratings: [r(5, 1, { optionId: 'ch+ka' }), r(null, null, { optionId: 'ka+ko', want: true })] })
+  const w = suggestAll({ meals: [dc], history: { entries: [], importedWeeks: 0 }, freezer: [], members: [SAM, CHLOE], today: TODAY, planned: [] }).find((x) => x.lane === 'want')
+  eq('want: named as the wanted variation', [w?.title, w?.optionIds], ['Cabbage (Korean, Kangaroo)', ['ka', 'ko']])
+}
 ok('weekend: high effort favourite', lane('weekend').includes('Big roast'))
 const pick = all.find((s) => s.lane === 'pick')
 ok("pick: Chloe's pick", pick?.title === 'Chloe special' && /Chloe's pick/.test(pick.reason), pick?.reason)
