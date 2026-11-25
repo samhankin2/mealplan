@@ -1,6 +1,8 @@
 <script lang="ts">
   import Chevron from '../components/Chevron.svelte'
-  import PlanNights from '../components/PlanNights.svelte'
+  import NightSheet from '../components/NightSheet.svelte'
+  import WeekComposer from '../components/WeekComposer.svelte'
+  import { tick } from 'svelte'
   import TypeWeekSheet from '../components/TypeWeekSheet.svelte'
   import IdeasTray from '../components/IdeasTray.svelte'
   import { suggestAll, weekBalance } from '../lib/suggest'
@@ -23,7 +25,16 @@
   const entries = $derived(plan.weeks[start] ?? [])
   const planned = $derived(entries.length)
 
-  let open = $state<Day | null>(null)
+  let open = $state<Day | null>(null) // the night's full sheet (note, move)
+  let active = $state<Day | null>(null) // the night the docked line is filling
+  let composer: { focus: () => void } | undefined = $state()
+
+  // The night being filled stays in view above the keyboard.
+  $effect(() => {
+    const d = active
+    if (!d) return
+    void tick().then(() => document.querySelector(`.days li[data-date="${d}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }))
+  })
   let typing = $state(false)
   let notice = $state('')
   let busy = $state(false)
@@ -171,11 +182,12 @@
 
   function openNight(day: Day): void {
     if (justDragged) return // the click that ends a drag isn't a tap
-    open = day
+    active = day
+    composer?.focus() // in the tap itself, so the keyboard comes up
   }
 </script>
 
-<section aria-labelledby="week-title">
+<section aria-labelledby="week-title" class:composing={active !== null}>
   <header class="week-head">
     <div>
       <h1 id="week-title">{isThisWeek ? 'This week' : weekLabel(start)}</h1>
@@ -208,6 +220,7 @@
           type="button"
           class="day"
           class:today={day === todayDay}
+          class:active={active === day}
           class:filled={Boolean(entry)}
           class:quiet={entry && entry.kind !== 'dish' && entry.kind !== 'freezer'}
           onclick={() => openNight(day)}
@@ -270,8 +283,10 @@
   </div>
 {/if}
 
+<WeekComposer bind:this={composer} {start} bind:selected={active} {ideas} onmore={(d) => (open = d)} />
+
 {#if open}
-  <PlanNights {start} date={open} onclose={() => (open = null)} />
+  <NightSheet {start} date={open} entry={entryFor(start, open)} onclose={() => { open = null; composer?.focus() }} />
 {/if}
 {#if typing}
   <TypeWeekSheet {start} onclose={() => (typing = false)} />
@@ -333,11 +348,11 @@
   .day {
     width: 100%;
     display: grid;
-    grid-template-columns: 4.6rem minmax(0, 1fr);
+    grid-template-columns: 6.4rem minmax(0, 1fr);
     align-items: center;
-    gap: 0.6rem;
-    min-height: 56px;
-    padding: 0.5rem 3rem 0.5rem 1rem;
+    gap: 0.5rem;
+    min-height: 48px;
+    padding: 0.35rem 3rem 0.35rem 0.9rem;
     border: 1.5px dashed var(--rule-strong);
     border-radius: var(--r-row);
     background: transparent;
@@ -353,7 +368,7 @@
   .day.filled {
     border: 0;
     border-left: 6px solid var(--day);
-    padding-left: calc(1rem - 4.5px);
+    padding-left: calc(0.9rem - 4.5px);
     background: color-mix(in srgb, var(--day) var(--tint), var(--plate));
   }
   .day.quiet {
@@ -362,6 +377,14 @@
   /* Dragging: the night being carried fades; the night under the finger shows where it'll land. */
   .source .day {
     opacity: 0.35;
+  }
+  .day.active {
+    outline: 2.5px solid var(--day);
+    outline-offset: 2px;
+  }
+  /* Room to scroll the last nights clear of the docked line. */
+  .composing {
+    padding-bottom: 9rem;
   }
   .target .day {
     outline: 2.5px solid var(--day);
@@ -412,7 +435,9 @@
     rotate: -1.5deg;
   }
   .date {
-    display: grid;
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
     line-height: 1;
   }
   .weekday {
@@ -428,7 +453,6 @@
     color: var(--plum);
   }
   .num {
-    margin-top: 0.2rem;
     font-size: var(--s-1);
     color: var(--pepper);
   }
