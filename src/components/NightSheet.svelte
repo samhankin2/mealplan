@@ -5,7 +5,7 @@
   import { axes, loadMeals, meals } from '../lib/meals.svelte'
   import { clearNight, entryFor, moveNight, searchMeals, setNight } from '../lib/plan.svelte'
   import { freezer, freezerLabel, loadFreezer } from '../lib/review.svelte'
-  import { forNight, suggestAll, type Suggestion } from '../lib/suggest'
+  import { rankIdeas, type Idea } from '../lib/suggest'
   import { history } from '../lib/suggestions.svelte'
   import { plan } from '../lib/plan.svelte'
   import { app } from '../lib/state.svelte'
@@ -90,20 +90,11 @@
   // The same as dragging, without the drag: onto an empty night moves, onto a planned one swaps.
   const moveTo = (to: Day) => run(() => moveNight(start, date, to))
 
-  // The best few ideas for this particular night (weeknights skip high-effort meals).
+  // The top of the Ideas tab, for this night (freezer stock has its own row below).
   const ideas = $derived(
-    forNight(
-      // Freezer stock has its own row below, so it isn't repeated here.
-      suggestAll({ meals: meals.list, history, freezer: [], members: app.household?.members ?? [], today: today(), planned: plan.weeks[start] ?? [] }),
-      meals.list,
-      date,
-    ),
+    rankIdeas({ meals: meals.list, history, freezer: [], members: app.household?.members ?? [], today: today(), planned: plan.weeks[start] ?? [] }).slice(0, 3),
   )
-  const useIdea = (s: Suggestion) =>
-    run(async () => {
-      if (s.freezerItemId) await setNight(start, date, { kind: 'freezer', freezerItemId: s.freezerItemId })
-      else await setNight(start, date, { kind: 'dish', dishId: s.mealId, optionIds: s.optionIds ?? [] })
-    })
+  const useIdea = (s: Idea) => run(async () => void (await setNight(start, date, { kind: 'dish', dishId: s.mealId, optionIds: s.optionIds })))
 
   const fromFreezer = (freezerItemId: string) => run(async () => void (await setNight(start, date, { kind: 'freezer', freezerItemId })))
 </script>
@@ -136,11 +127,11 @@
     {#if ideas.length && !query.trim()}
       <p class="axis muted">Ideas for {weekdayName(date)}</p>
       <ul class="results ideas">
-        {#each ideas as s (s.lane + s.mealId)}
+        {#each ideas as s (s.mealId)}
           <li>
             <button type="button" class="result idea" onclick={() => void useIdea(s)}>
-              <span>{s.lane === 'freezer' ? '❄ ' : ''}{s.title}</span>
-              <span class="muted why">{s.reason}</span>
+              <span>{s.title}</span>
+              <span class="muted why">{s.headline}</span>
             </button>
           </li>
         {/each}

@@ -3,7 +3,7 @@
  * Suggestion engine on synthetic meals with known answers. Plain Node (24+
  * strips the TypeScript types).   node qa/suggest-test.mjs
  */
-import { forNight, opinionOf, rankIdeas, regularOf, suggestAll, tray, weekBalance } from '../src/lib/suggest.ts'
+import { forNight, opinionOf, rankIdeas, ratingWeight, regularOf, suggestAll, tray, weekBalance } from '../src/lib/suggest.ts'
 
 let pass = 0
 let fail = 0
@@ -156,6 +156,25 @@ eq('balance: veggie, new, repeats', weekBalance([e(veg.id), e(chilli.id, ['v']),
   ok('ideas: a curry already planned pushes curries down', withCurry.findIndex((i) => i.title === 'Curry B') > withCurry.findIndex((i) => i.title === 'Pasta'))
   ok('ideas: and says so', withCurry.find((i) => i.title === 'Curry B')?.facts.includes("There's already a curry this week"))
   ok('ideas: planned meals are left out', !withCurry.some((i) => i.title === 'Curry A'))
+}
+
+/* ---------- Ratings from cooking count more than ratings from memory ---------- */
+{
+  eq('weight: a remembered 5 counts as 4', ratingWeight({ stars: 5, thumbs: 1, source: 'estimate' }), 4)
+  eq('weight: a cooked 5 counts as 5', ratingWeight({ stars: 5, thumbs: 1, source: 'review' }), 5)
+  eq('weight: a remembered 1 counts as 2', ratingWeight({ stars: 1, thumbs: -1, source: 'estimate' }), 2)
+  const q = (who, stars, source) => ({ optionId: null, ratedAs: who, thumbs: stars >= 3 ? 1 : -1, stars, source })
+  const remembered = meal('Remembered 5s', { cooked: 4, lastCooked: '2027-01-20', ratings: [q('sam', 5, 'estimate'), q('chloe', 5, 'estimate')] })
+  const cooked = meal('Cooked 4s', { cooked: 4, lastCooked: '2027-01-20', ratings: [q('sam', 4, 'review'), q('chloe', 4, 'review')] })
+  const list = rankIdeas({ meals: [remembered, cooked], history: { entries: [], importedWeeks: 0 }, freezer: [], members: [SAM, CHLOE], today: TODAY, planned: [] })
+  eq('weight: 4s from real cooks beat 5s from memory', list.map((i) => i.title), ['Cooked 4s', 'Remembered 5s'])
+  ok('weight: says which ratings are from memory', list.find((i) => i.title === 'Remembered 5s').facts.includes('Sam 5★, Chloe 5★, from memory'))
+  const opts = [{ id: 'a', axis: 'Style', name: 'A' }, { id: 'b', axis: 'Style', name: 'B' }]
+  const v = meal('Variations', { options: opts, cooked: 3, ratings: [{ ...q('both', 5, 'estimate'), optionId: 'a' }, { ...q('both', 4, 'review'), optionId: 'b' }] })
+  eq('weight: the best variation goes by real cooks first', opinionOf(v).best?.optionId, 'b')
+  const mixed = meal('Mixed', { cooked: 4, lastCooked: '2027-01-20', ratings: [q('sam', 5, 'estimate'), q('sam', 3, 'review'), q('chloe', 4, 'review')] })
+  const m = rankIdeas({ meals: [mixed], history: { entries: [], importedWeeks: 0 }, freezer: [], members: [SAM, CHLOE], today: TODAY, planned: [] })[0]
+  eq('weight: a rating from cooking replaces the remembered one', m.people.map((p) => [p.stars, p.estimate]), [[3, false], [4, false]])
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

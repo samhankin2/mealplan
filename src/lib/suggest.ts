@@ -61,6 +61,20 @@ const weeks = (days: number) => (days >= 14 ? `${Math.round(days / 7)} weeks` : 
 
 const scored = (r: Rating) => !r.want && (r.thumbs !== null || r.stars !== null)
 
+/**
+ * How much a rating counts, in stars. Most ratings so far were given from
+ * memory when the meals were imported, so they're pulled halfway to 3 (a
+ * remembered 5 counts as 4); a rating given after actually cooking it counts
+ * in full. Thumbs alone count as 4 or 1.5.
+ */
+export const MEMORY_WEIGHT = 0.5
+export function ratingWeight(r: Pick<Rating, 'stars' | 'thumbs' | 'source'>): number | null {
+  const raw = r.stars ?? (r.thumbs === 1 ? 4 : r.thumbs === -1 ? 1.5 : null)
+  if (raw === null) return null
+  return r.source === 'review' ? raw : 3 + (raw - 3) * MEMORY_WEIGHT
+}
+const fromCooking = (r: Rating) => r.source === 'review'
+
 export interface Opinion {
   liked: boolean // someone gave it thumbs up and it isn't mostly thumbs down
   disliked: boolean // every opinion is thumbs down
@@ -77,7 +91,7 @@ export function opinionOf(meal: Meal): Opinion {
   const s = rs.filter(scored)
   const ups = s.filter((r) => r.thumbs === 1 || (r.thumbs === null && (r.stars ?? 0) >= 3)).length
   const downs = s.filter((r) => r.thumbs === -1 || (r.thumbs === null && (r.stars ?? 5) <= 2)).length
-  const best = [...s].sort((a, b) => (b.stars ?? 0) - (a.stars ?? 0) || (b.thumbs ?? 0) - (a.thumbs ?? 0))[0]
+  const best = [...s].sort((a, b) => (ratingWeight(b) ?? 0) - (ratingWeight(a) ?? 0) || Number(fromCooking(b)) - Number(fromCooking(a)) || (b.stars ?? 0) - (a.stars ?? 0))[0]
   return {
     liked: ups > 0 && ups >= downs,
     disliked: s.length > 0 && ups === 0,
@@ -374,12 +388,17 @@ export function rankIdeas(input: SuggestInput): Idea[] {
     // Each of us: our best rating on any variation ("both" counts for each).
     const view: PersonView[] = people.map((m) => {
       const mine = ratings.filter((r) => r.ratedAs === m.id || r.ratedAs === 'both')
-      const scoredMine = mine.filter(scored).sort((a, b) => (b.stars ?? 0) - (a.stars ?? 0) || (b.thumbs ?? 0) - (a.thumbs ?? 0))
-      const best = scoredMine[0]
-      return { name: m.name, stars: best?.stars ?? null, thumbs: best?.thumbs ?? null, estimate: Boolean(best) && best.source !== 'review', wants: mine.some((r) => r.want) }
+      const byStars = (a: Rating, b: Rating) => (b.stars ?? 0) - (a.stars ?? 0) || (b.thumbs ?? 0) - (a.thumbs ?? 0)
+      const scoredMine = mine.filter(scored)
+      const best = scoredMine.filter(fromCooking).sort(byStars)[0] ?? scoredMine.sort(byStars)[0]
+      return { name: m.name, stars: best?.stars ?? null, thumbs: best?.thumbs ?? null, estimate: Boolean(best) && !fromCooking(best), wants: mine.some((r) => r.want) }
     })
+    // As given, for the words ("you both love it"); weighted, for the score.
     const level = (p: PersonView) => p.stars ?? (p.thumbs === 1 ? 4 : p.thumbs === -1 ? 1.5 : null)
     const levels = view.map(level)
+    const weighted = view.map((p) => ratingWeight({ stars: p.stars, thumbs: p.thumbs, source: p.estimate ? 'estimate' : 'review' }))
+    const wKnown = weighted.filter((l): l is number => l !== null)
+    const realShare = view.filter((p, i) => levels[i] !== null && !p.estimate).length / view.length
     const known = levels.filter((l): l is number => l !== null)
     if (known.length && known.every((l) => l <= 2)) continue // neither of us likes it
     const lo = known.length ? Math.min(...known) : null
@@ -390,7 +409,8 @@ export function rankIdeas(input: SuggestInput): Idea[] {
 
     // How much we like it, -1..1: the lower of our ratings counts double, so "both like it" wins.
     let like = 0
-    if (lo !== null && hi !== null) like = ((lo * 2 + hi) / 3 - 3) / 2
+    if (wKnown.length) like = ((Math.min(...wKnown) * 2 + Math.max(...wKnown)) / 3 - 3) / 2
+    like += 0.15 * realShare // known from real cooks, not just remembered
     if (known.length && known.length < view.length) like *= 0.7 // only one of us has rated it
     if (!known.length) like = meal.cooked >= 3 ? 0.1 : 0
 
@@ -439,11 +459,11 @@ export function rankIdeas(input: SuggestInput): Idea[] {
     else if (bothLike && overdue) headline = `You both love it, and it's overdue`
     else if (bothLike) headline = `You both love it`
     else if (wanters.length) headline = `${names(wanters)} want${wanters.length === 1 && view.length > 1 ? 's' : ''} to try it`
-    else if (overdue && like > 0) headline = `A favourite that's overdue`
     else if (oneSided) {
       const fan = view[levels.indexOf(hi)]
       headline = `${fan.name}'s favourite`
-    } else if (!known.length && meal.cooked >= 3) headline = `Made often, never rated`
+    } else if (overdue && like > 0) headline = `A favourite that's overdue`
+    else if (!known.length && meal.cooked >= 3) headline = `Made often, never rated`
     else headline = like > 0 ? 'Liked' : 'Something different'
 
     ideas.push({
