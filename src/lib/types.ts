@@ -70,6 +70,22 @@ export interface Meal {
   notes: MealNote[]
 }
 
+/** How much we want to make it: 1 some day, 2 keen, 3 really want. */
+export type WantLevel = 1 | 2 | 3
+
+/** A line on the want-to-make scratch pad: the words as typed, and the meal once found. */
+export interface WantLine {
+  id: string
+  text: string
+  level: WantLevel
+  dishId: string | null
+  optionIds: string[]
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
+  done: boolean
+}
+
 export interface Household {
   id: string
   weekStartDay: number // 0 = Monday … 6 = Sunday

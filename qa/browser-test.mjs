@@ -517,6 +517,35 @@ try {
   ok('not now: snoozed for both phones', await (async () => { for (let i = 0; i < 30; i++) { const m = (await http('GET', '/api/planner/meals', sam.token)).meals.find((x) => x.name === snoozedName); if (m?.snoozedUntil) return true; await sleep(150) } return false })(), snoozedName)
   ok('not now: drops out of the list', await until(`![...document.querySelectorAll('.idea h2')].some((t) => t.innerText.split(' (')[0] === ${JSON.stringify(snoozedName)})`))
   ok('phone: no horizontal overflow on ideas', (await overflow()) <= 0, String(await overflow()))
+  // Want to make: a scratch pad of notes, each with how much
+  ok('want pad: on the ideas tab', await until(`/Want to make/.test(document.querySelector('.pad h2')?.innerText ?? '')`))
+  const wantName = await evaluate(`return [...document.querySelectorAll('.idea h2')].at(-1)?.innerText.split(' (')[0] ?? ''`)
+  const addWant = async (words) => {
+    await type('.pad .new textarea', words)
+    await evaluate(`document.querySelector('.pad .new textarea').focus(); return true`)
+    await press('Enter')
+  }
+  await addWant(`${wantName.toLowerCase()}, the way we had it at the pub`)
+  ok('want pad: Return adds the line, as typed', await until(`document.querySelectorAll('.pad .want:not(.new)').length === 1 && document.querySelector('.pad .want textarea').value.endsWith('at the pub')`), await text('.pad'))
+  ok('want pad: the new line is ready for the next one', await evaluate(`return document.activeElement === document.querySelector('.pad .new textarea') && document.querySelector('.pad .new textarea').value === ''`))
+  ok('want pad: the meal is found under the words', await until(`document.querySelector('.pad .want .matched')?.innerText === ${JSON.stringify(wantName)}`), await text('.pad'))
+  await click('.pad .want:not(.new) .how')
+  ok('want pad: tap to say how much', await until(`/Really want/.test(document.querySelector('.pad .want .how')?.innerText ?? '')`))
+  ok('want pad: saved for both phones', await (async () => { for (let i = 0; i < 30; i++) { const w = (await http('GET', '/api/planner/wants', chloe.token)).wants; if (w[0]?.level === 3) return true; await sleep(150) } return false })())
+  ok('want pad: really wanting it puts it top of the ideas', await until(`document.querySelector('.idea h2')?.innerText.startsWith(${JSON.stringify(wantName)}) && /really want/i.test(document.querySelector('.idea .headline')?.innerText ?? '')`), await text('.idea'))
+  ok('want pad: the note shows on the idea', /at the pub/.test(await text('.idea')))
+  await addWant('miso eggplant from the ottolenghi book')
+  ok('want pad: words that are no meal stay a note', await until(`[...document.querySelectorAll('.pad .want:not(.new)')].length === 2 && /Add as new meal/.test([...document.querySelectorAll('.pad .want:not(.new)')][1].innerText)`), await text('.pad'))
+  await shot('13b-want-pad.png')
+  ok('phone: no horizontal overflow with the want pad', (await overflow()) <= 0, String(await overflow()))
+  // Emptying a line removes it; Remove does too
+  const second = `[...document.querySelectorAll('.pad .want:not(.new) textarea')][1]`
+  await evaluate(`const el = ${second}; el.focus(); return true`)
+  await type('.pad .want:not(.new):nth-child(2) textarea', '')
+  await evaluate(`document.activeElement.blur(); return true`)
+  ok('want pad: an emptied line goes', await until(`document.querySelectorAll('.pad .want:not(.new)').length === 1`))
+  await evaluate(`[...document.querySelectorAll('.pad .want .link')].find((b) => b.innerText === 'Remove').click(); return true`)
+  ok('want pad: Remove', await until(`document.querySelectorAll('.pad .want:not(.new)').length === 0`))
   // Back on the week
   await evaluate(`location.hash = '#/week/${localDay(28)}'; return true`)
   ok('ideas: placed on a night, best variation picked', await until(`[...document.querySelectorAll('.days .day')].some((d) => /Risotto/i.test(d.querySelector('input').value) && new RegExp(${JSON.stringify(risotto.options[0].name)}).test(d.querySelector('input').value))`))

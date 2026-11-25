@@ -177,5 +177,30 @@ eq('balance: veggie, new, repeats', weekBalance([e(veg.id), e(chilli.id, ['v']),
   eq('weight: a rating from cooking replaces the remembered one', m.people.map((p) => [p.stars, p.estimate]), [[3, false], [4, false]])
 }
 
+
+// The want-to-make list: a matched line lifts its meal by how much we want it
+{
+  const base = { history: { entries: [], importedWeeks: 0 }, freezer: [], members: [SAM, CHLOE], today: TODAY, planned: [] }
+  const k = { id: 'k', axis: 'Style', name: 'Korean' }
+  const pool = [
+    meal('Liked staple', { id: 'w1', cooked: 6, lastCooked: '2027-01-20', ratings: [r(4)] }),
+    meal('Wishlist curry', { id: 'w2', options: [k], ratings: [] }),
+    meal('Meh soup', { id: 'w3', cooked: 3, lastCooked: '2026-12-01', ratings: [r(2)] }),
+  ]
+  const want = (dishId, level, text, optionIds = []) => ({ id: `want-${dishId}`, text, level, dishId, optionIds, createdBy: 'sam', createdAt: '', updatedAt: '', done: false })
+  const plain = rankIdeas({ ...base, meals: pool })
+  ok('wants: without the list, the new meal sits below the liked one', plain.findIndex((i) => i.mealId === 'w2') > plain.findIndex((i) => i.mealId === 'w1'))
+  const keen = rankIdeas({ ...base, meals: pool, wants: [want('w2', 3, 'that korean curry from the market', ['k'])] })
+  const top = keen[0]
+  eq('wants: "really want" puts it first', top.mealId, 'w2')
+  eq('wants: headline and level', [top.headline, top.wantLevel, top.wanted], ['You really want to make this', 3, true])
+  eq('wants: titled by the variation on the line', [top.title, top.optionIds], ['Wishlist curry (Korean)', ['k']])
+  ok('wants: the words are in the facts', top.facts[0].includes('that korean curry from the market'), top.facts[0])
+  const some = rankIdeas({ ...base, meals: pool, wants: [want('w2', 1, 'wishlist curry')] }).find((i) => i.mealId === 'w2')
+  ok('wants: "some day" lifts it less', some.score < top.score && some.facts[0] === 'On your want-to-make list (some day)', JSON.stringify(some))
+  ok('wants: a meal we rated low still shows when it is on the list', rankIdeas({ ...base, meals: pool, wants: [want('w3', 2, 'meh soup but better')] }).some((i) => i.mealId === 'w3'))
+  ok('wants: a done line counts for nothing', rankIdeas({ ...base, meals: pool, wants: [{ ...want('w2', 3, 'x'), done: true }] }).find((i) => i.mealId === 'w2')?.wantLevel === null)
+}
+
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

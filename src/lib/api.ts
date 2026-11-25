@@ -1,5 +1,5 @@
 import { getToken } from './auth'
-import type { Day, FreezerItem, Household, Meal, MealNote, NightKind, ParsedNight, Partner, PlanEntry, RatedAs, Rating, ReviewEntry, Section, ShoppingItem, ShoppingWeek, User, Week } from './types'
+import type { Day, FreezerItem, Household, Meal, MealNote, NightKind, ParsedNight, Partner, PlanEntry, RatedAs, Rating, ReviewEntry, Section, ShoppingItem, ShoppingWeek, User, WantLevel, WantLine, Week } from './types'
 
 declare global {
   interface Window {
@@ -158,6 +158,31 @@ export const api = {
 
   addAlias(mealId: string, alias: string): Promise<Ok & { alias: string }> {
     return request(`/planner/meals/${encodeURIComponent(mealId)}/aliases`, { method: 'POST', body: { alias } })
+  },
+
+  wants(options?: RequestOptions): Promise<Ok & { wants: WantLine[] }> {
+    return request('/planner/wants', {}, options)
+  },
+
+  /** A want-to-make line typed like a note: saved at once; linked to a meal only when the server is sure. */
+  addWant(text: string, level: WantLevel): Promise<Ok & { want: WantLine; pending: boolean }> {
+    return request('/planner/wants', { method: 'POST', body: { text, level } })
+  },
+
+  updateWant(
+    id: string,
+    patch: { text?: string; level?: WantLevel; dishId?: string | null; optionIds?: string[]; done?: boolean },
+  ): Promise<Ok & { want: WantLine; pending: boolean }> {
+    return request(`/planner/wants/${encodeURIComponent(id)}`, { method: 'PUT', body: patch })
+  },
+
+  /** In the background: try harder (AI, with our meals) to find which meal the words are. */
+  matchWant(id: string): Promise<Ok & { matched: boolean; want: WantLine; candidates: { dishId: string; name: string; confidence: number }[] }> {
+    return request(`/planner/wants/${encodeURIComponent(id)}/match`, { method: 'POST' }, { timeoutMs: 40_000 })
+  },
+
+  removeWant(id: string): Promise<Ok> {
+    return request(`/planner/wants/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
 
   week(start: Day, options?: RequestOptions): Promise<Ok & { week: Week }> {

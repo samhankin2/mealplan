@@ -5,7 +5,7 @@
  * Lanes: due regulars, forgotten favourites, from the freezer, this time last
  * year, rediscover, picks (one of us loves it), want to try, weekend projects.
  */
-import type { Day, FreezerItem, Meal, Member, PlanEntry, Rating } from './types'
+import type { Day, FreezerItem, Meal, Member, PlanEntry, Rating, WantLevel, WantLine } from './types'
 import { stars as starWords, withOptions } from './format.ts'
 
 export type Lane = 'regular' | 'forgotten' | 'freezer' | 'lastYear' | 'rediscover' | 'pick' | 'want' | 'weekend'
@@ -27,6 +27,7 @@ export interface SuggestInput {
   members: Member[]
   today: Day
   planned: PlanEntry[] // nights already planned around now: those meals aren't suggested again
+  wants?: WantLine[] // the want-to-make scratch pad: matched lines raise their meal by how much
 }
 
 export const LANE_TITLES: Record<Lane, string> = {
@@ -335,6 +336,7 @@ export interface Idea {
   bothLike: boolean
   oneSided: boolean
   wanted: boolean
+  wantLevel: WantLevel | null // highest "how much" on the want-to-make list
   isNew: boolean // never made
   veggie: boolean
   effort: 1 | 2 | 3 | null
@@ -345,6 +347,10 @@ export interface Idea {
   frozenPortions?: number
 }
 
+// How much a want-to-make line lifts its meal: "really want" beats most reasons.
+const WANT_BOOST: Record<WantLevel, number> = { 1: 0.2, 2: 0.45, 3: 0.9 }
+const WANT_LABEL: Record<WantLevel, string> = { 1: 'Some day', 2: 'Keen', 3: 'Really want' }
+const sameWords = (a: string, b: string) => a.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() === b.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 const lower = (xs: string[]) => xs.map((x) => x.toLowerCase())
 const proteinIn = (words: string[]) => PROTEINS.find((p) => words.some((w) => w === p || w.startsWith(p) || w.includes(` ${p}`))) ?? null
 const roughly = (days: number) => (days < 10 ? `${days} days` : days < 60 ? `${Math.round(days / 7)} weeks` : `${Math.round(days / 30)} months`)
@@ -383,6 +389,9 @@ export function rankIdeas(input: SuggestInput): Idea[] {
     const hidden = new Set(meal.hidden ?? [])
     const ratings = meal.ratings.filter((r) => !(r.optionId && hidden.has(r.optionId)))
     const op = opinionOf(meal)
+    // On the want-to-make list: the line we want most.
+    const pad = (input.wants ?? []).filter((w) => w.dishId === meal.id && !w.done).sort((a, b) => b.level - a.level)[0]
+    const wantLevel = pad?.level ?? null
     const t = timingOf(meal, (datedBy.get(meal.id) ?? []).sort(), history.importedWeeks, today)
 
     // Each of us: our best rating on any variation ("both" counts for each).
@@ -400,7 +409,7 @@ export function rankIdeas(input: SuggestInput): Idea[] {
     const wKnown = weighted.filter((l): l is number => l !== null)
     const realShare = view.filter((p, i) => levels[i] !== null && !p.estimate).length / view.length
     const known = levels.filter((l): l is number => l !== null)
-    if (known.length && known.every((l) => l <= 2)) continue // neither of us likes it
+    if (known.length && known.every((l) => l <= 2) && !pad) continue // neither of us likes it
     const lo = known.length ? Math.min(...known) : null
     const hi = known.length ? Math.max(...known) : null
     const bothLike = known.length === view.length && view.length > 1 && lo !== null && lo >= 4
@@ -425,7 +434,9 @@ export function rankIdeas(input: SuggestInput): Idea[] {
     const tooSoon = finite && !t.undated && t.daysSince < 14
     const overdue = due >= 0.4 && !tooSoon
 
-    const { title, optionIds } = titleOf(meal, op.want && !known.length ? op.want : op.best)
+    const { title, optionIds } = pad?.optionIds.length
+      ? titleOf(meal, { optionId: pad.optionIds.join('+'), ratedAs: 'both', thumbs: null, stars: null })
+      : titleOf(meal, op.want && !known.length ? op.want : op.best)
     const traits = traitsOf(meal, optionIds)
     const item = freezer.filter((f) => f.dishId === meal.id && f.portions > 0).sort((a, b) => (a.frozenOn ?? '').localeCompare(b.frozenOn ?? ''))[0]
 
@@ -436,7 +447,8 @@ export function rankIdeas(input: SuggestInput): Idea[] {
     if (traits.veggie && !weekHasVeggie && planned.length) score += 0.25
     if (item) score += 0.3
     if (wanters.length) score += wanters.length > 1 ? 0.4 : 0.25
-    if (meal.cooked === 0 && !wanters.length && !known.length) score -= 0.3
+    if (wantLevel) score += WANT_BOOST[wantLevel]
+    if (meal.cooked === 0 && !wanters.length && !wantLevel && !known.length) score -= 0.3
 
     // In words.
     const facts: string[] = []
@@ -452,12 +464,15 @@ export function rankIdeas(input: SuggestInput): Idea[] {
     else if (traits.protein && traits.protein !== 'veg' && weekProteins.has(traits.protein)) facts.push(`There's already ${traits.protein} this week`)
     if (traits.veggie && !weekHasVeggie && planned.length) facts.push('Would be the veggie night')
     if (tooSoon) facts.push(`Only had it ${t.daysSince} days ago`)
+    if (pad) facts.unshift(sameWords(pad.text, title) || sameWords(pad.text, meal.name) ? `On your want-to-make list (${WANT_LABEL[pad.level].toLowerCase()})` : `Want to make (${WANT_LABEL[pad.level].toLowerCase()}): "${pad.text}"`)
 
     const names = (ps: PersonView[]) => (ps.length === view.length && view.length > 1 ? 'You both' : ps.map((p) => p.name).join(' and '))
     let headline: string
     if (item && like >= 0) headline = `Ready in the freezer${bothLike ? ', and you both like it' : ''}`
+    else if (wantLevel === 3) headline = 'You really want to make this'
     else if (bothLike && overdue) headline = `You both love it, and it's overdue`
     else if (bothLike) headline = `You both love it`
+    else if (wantLevel === 2) headline = 'On your want-to-make list'
     else if (wanters.length) headline = `${names(wanters)} want${wanters.length === 1 && view.length > 1 ? 's' : ''} to try it`
     else if (oneSided) {
       const fan = view[levels.indexOf(hi)]
@@ -482,7 +497,8 @@ export function rankIdeas(input: SuggestInput): Idea[] {
       overdue,
       bothLike,
       oneSided,
-      wanted: wanters.length > 0,
+      wanted: wanters.length > 0 || Boolean(wantLevel),
+      wantLevel,
       isNew: meal.cooked === 0,
       veggie: traits.veggie,
       effort: meal.effort,

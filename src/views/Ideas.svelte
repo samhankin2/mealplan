@@ -11,6 +11,8 @@
   import { freezer, loadFreezer } from '../lib/review.svelte'
   import { app } from '../lib/state.svelte'
   import { rankIdeas, type Idea } from '../lib/suggest'
+  import WantPad from '../components/WantPad.svelte'
+  import { loadWants, wants } from '../lib/wants.svelte'
   import { history, loadHistory, notNow } from '../lib/suggestions.svelte'
   import type { Day } from '../lib/types'
 
@@ -29,10 +31,11 @@
     void loadWeek(start)
     void loadFreezer()
     void loadHistory()
+    void loadWants()
   })
 
   const ideas = $derived(
-    rankIdeas({ meals: meals.list, history, freezer: freezer.items, members: app.household?.members ?? [], today: todayDay, planned: entries }),
+    rankIdeas({ meals: meals.list, history, freezer: freezer.items, members: app.household?.members ?? [], today: todayDay, planned: entries, wants: wants.list }),
   )
 
   const FILTERS = [
@@ -122,6 +125,8 @@
       Every night this week is planned. <a href={`#/ideas/${addDays(start, 7)}`}>Next week</a>
     {/if}
   </p>
+
+  <WantPad />
 
   <div class="filters" role="group" aria-label="Show">
     {#each FILTERS as f (f.id)}

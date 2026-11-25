@@ -2,13 +2,19 @@
   import { onMount } from 'svelte'
   import PersonaPicker from '../components/PersonaPicker.svelte'
   import { app } from '../lib/state.svelte'
+  import { wants as wantList, loadWants } from '../lib/wants.svelte'
   import { bestRating, isRated, loadMeals, meals, persona, ratedCount, ratedParts, rateables, ratingFor, sortedMeals } from '../lib/meals.svelte'
 
   let query = $state('')
   let filter = $state<'all' | 'unrated' | 'want'>('all')
+  const onList = (m: (typeof meals.list)[number]): boolean => wantList.list.some((w) => w.dishId === m.id)
   const wants = (m: (typeof meals.list)[number]): number => rateables(m).filter((x) => ratingFor(m, x.key, persona.value)?.want).length
+  const wanted = (m: (typeof meals.list)[number]): boolean => wants(m) > 0 || onList(m)
 
-  onMount(() => void loadMeals(true))
+  onMount(() => {
+    void loadMeals(true)
+    void loadWants(true)
+  })
 
   const total = $derived(meals.list.length)
   const done = $derived(ratedCount(meals.list, persona.value))
@@ -24,7 +30,7 @@
   const shown = $derived(
     sortedMeals(meals.list).filter((m) => {
       if (filter === 'unrated' && isRated(m, persona.value)) return false
-      if (filter === 'want' && !wants(m)) return false
+      if (filter === 'want' && !wanted(m)) return false
       const q = query.trim().toLowerCase()
       return !q || m.name.toLowerCase().includes(q) || m.aliases.some((a) => a.includes(q)) || m.tags.some((t) => t.toLowerCase().includes(q))
     }),
@@ -87,7 +93,7 @@
           <span class="score" aria-label={r ? `rated ${r.thumbs === 1 ? 'thumbs up' : r.thumbs === -1 ? 'thumbs down' : ''} ${r.stars ? `${r.stars} stars` : ''}` : 'not rated'}>
             {#if r}
               {r.thumbs === 1 ? '👍' : r.thumbs === -1 ? '👎' : ''}{r.stars ? ` ${'★'.repeat(r.stars)}` : ''}
-            {:else if w}
+            {:else if w || onList(meal)}
               <span class="want">Want to make</span>
             {:else}
               <span class="dot" aria-hidden="true"></span>

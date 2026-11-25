@@ -6,13 +6,17 @@
   import { clearNight, entryFor, moveNight, searchMeals, setNight } from '../lib/plan.svelte'
   import { freezer, freezerLabel, loadFreezer } from '../lib/review.svelte'
   import { rankIdeas, type Idea } from '../lib/suggest'
+  import { loadWants, wants } from '../lib/wants.svelte'
   import { history } from '../lib/suggestions.svelte'
   import { plan } from '../lib/plan.svelte'
   import { app } from '../lib/state.svelte'
   import { today } from '../lib/dates'
   import { onMount } from 'svelte'
 
-  onMount(() => void loadFreezer())
+  onMount(() => {
+    void loadFreezer()
+    void loadWants()
+  })
   import type { Day, Meal, NightKind, PlanEntry } from '../lib/types'
 
   let { start, date, entry, onclose }: { start: Day; date: Day; entry: PlanEntry | undefined; onclose: () => void } = $props()
@@ -92,7 +96,7 @@
 
   // The top of the Ideas tab, for this night (freezer stock has its own row below).
   const ideas = $derived(
-    rankIdeas({ meals: meals.list, history, freezer: [], members: app.household?.members ?? [], today: today(), planned: plan.weeks[start] ?? [] }).slice(0, 3),
+    rankIdeas({ meals: meals.list, history, freezer: [], members: app.household?.members ?? [], today: today(), planned: plan.weeks[start] ?? [], wants: wants.list }).slice(0, 3),
   )
   const useIdea = (s: Idea) => run(async () => void (await setNight(start, date, { kind: 'dish', dishId: s.mealId, optionIds: s.optionIds })))
 
