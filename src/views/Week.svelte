@@ -7,7 +7,7 @@
   import { history, loadHistory } from '../lib/suggestions.svelte'
   import { addDays, shortDate, today, weekDays, weekdayIndex, weekdayName, weekLabel, weekStart } from '../lib/dates'
   import { loadMeals, meals } from '../lib/meals.svelte'
-  import { copyWeek, describe, entryFor, loadWeek, plan } from '../lib/plan.svelte'
+  import { copyWeek, describe, entryFor, loadWeek, moveNight, plan } from '../lib/plan.svelte'
   import { freezer, loadFreezer, loadReview, review } from '../lib/review.svelte'
   import { app } from '../lib/state.svelte'
   import type { Day } from '../lib/types'
@@ -59,6 +59,120 @@
       busy = false
     }
   }
+
+  /* ------------------------------------------------------------------ */
+  /* Drag a night onto another: empty, it moves; planned, they swap.      */
+  /* The grip starts a drag at once; a press and hold on the row does too. */
+  /* ------------------------------------------------------------------ */
+
+  let drag = $state<{ from: Day; title: string; x: number; y: number; width: number; left: number } | null>(null)
+  let over = $state<Day | null>(null)
+  let holdTimer = 0
+  let pressAt: { x: number; y: number } | null = null
+  let justDragged = false
+
+  function begin(el: HTMLElement, pointerId: number, x: number, y: number, day: Day): void {
+    const entry = entryFor(start, day)
+    if (!entry) return
+    const box = (el.closest('li') as HTMLElement).getBoundingClientRect()
+    drag = { from: day, title: describe(entry, meals.list).title, x, y, width: box.width, left: box.left }
+    over = day
+    try {
+      el.setPointerCapture(pointerId)
+    } catch {
+      // Capture is a nicety; window listeners still follow the pointer.
+    }
+    navigator.vibrate?.(12)
+  }
+
+  function onGripDown(e: PointerEvent, day: Day): void {
+    e.preventDefault()
+    e.stopPropagation()
+    begin(e.currentTarget as HTMLElement, e.pointerId, e.clientX, e.clientY, day)
+  }
+
+  function onRowDown(e: PointerEvent, day: Day): void {
+    if (!entryFor(start, day) || e.button > 0) return
+    pressAt = { x: e.clientX, y: e.clientY }
+    const el = e.currentTarget as HTMLElement
+    const { pointerId, clientX, clientY } = e
+    window.clearTimeout(holdTimer)
+    holdTimer = window.setTimeout(() => {
+      // Still holding still: pick it up.
+      if (pressAt) begin(el, pointerId, clientX, clientY, day)
+    }, 380)
+  }
+
+  function onRowMove(e: PointerEvent): void {
+    // Moving before the hold finishes is a scroll or a tap, not a drag.
+    if (pressAt && !drag && Math.hypot(e.clientX - pressAt.x, e.clientY - pressAt.y) > 8) cancelHold()
+  }
+
+  function cancelHold(): void {
+    window.clearTimeout(holdTimer)
+    pressAt = null
+  }
+
+  function dayAt(x: number, y: number): Day | null {
+    const el = document.elementFromPoint(x, y)?.closest('[data-date]') as HTMLElement | null
+    return (el?.dataset.date as Day | undefined) ?? null
+  }
+
+  $effect(() => {
+    if (!drag) return
+    const move = (e: PointerEvent): void => {
+      if (!drag) return
+      drag.x = e.clientX
+      drag.y = e.clientY
+      over = dayAt(e.clientX, e.clientY) ?? over
+      // Near the top or bottom of the screen: scroll to reach the rest of the week.
+      if (e.clientY > window.innerHeight - 90) window.scrollBy(0, 14)
+      else if (e.clientY < 70) window.scrollBy(0, -14)
+    }
+    const up = (): void => void drop()
+    const cancel = (): void => end()
+    // While dragging, a finger moving must not scroll the page.
+    const noScroll = (e: TouchEvent): void => e.preventDefault()
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', cancel)
+    document.addEventListener('touchmove', noScroll, { passive: false })
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', cancel)
+      document.removeEventListener('touchmove', noScroll)
+    }
+  })
+
+  function end(): void {
+    cancelHold()
+    if (drag) justDragged = true
+    drag = null
+    over = null
+    // A finger lifting after a drag can still produce a "tap" a moment later: ignore it.
+    window.setTimeout(() => (justDragged = false), 450)
+  }
+
+  async function drop(): Promise<void> {
+    const from = drag?.from
+    const to = over
+    const title = drag?.title ?? ''
+    end()
+    if (!from || !to || from === to) return
+    const swapped = Boolean(entryFor(start, to))
+    try {
+      await moveNight(start, from, to)
+      notice = swapped ? `Swapped ${weekdayName(from)} and ${weekdayName(to)}.` : `Moved ${title} to ${weekdayName(to)}.`
+    } catch (e) {
+      notice = e instanceof Error ? e.message : String(e)
+    }
+  }
+
+  function openNight(day: Day): void {
+    if (justDragged) return // the click that ends a drag isn't a tap
+    open = day
+  }
 </script>
 
 <section aria-labelledby="week-title">
@@ -85,24 +199,31 @@
   {/if}
   {#if plan.error}<p class="error" role="alert">{plan.error}</p>{/if}
 
-  <ol class="days" aria-label={`${planned} of 7 nights planned`}>
+  <ol class="days" class:dragging={Boolean(drag)} aria-label={`${planned} of 7 nights planned`}>
     {#each days as day (day)}
       {@const entry = entryFor(start, day)}
       {@const shown = entry ? describe(entry, meals.list) : null}
-      <li class={`day-${weekdayIndex(day)}`}>
+      <li class={`day-${weekdayIndex(day)}`} data-date={day} class:source={drag?.from === day} class:target={drag && over === day && drag.from !== day}>
         <button
           type="button"
           class="day"
           class:today={day === todayDay}
           class:filled={Boolean(entry)}
           class:quiet={entry && entry.kind !== 'dish' && entry.kind !== 'freezer'}
-          onclick={() => (open = day)}>
+          onclick={() => openNight(day)}
+          onpointerdown={(e) => onRowDown(e, day)}
+          onpointermove={onRowMove}
+          onpointerup={cancelHold}
+          onpointerleave={cancelHold}
+          oncontextmenu={(e) => entry && e.preventDefault()}>
           <span class="date">
             <span class="weekday">{weekdayName(day)}</span>
             <span class="num">{shortDate(day)}</span>
           </span>
           <span class="what">
-            {#if shown}
+            {#if drag && over === day && drag.from !== day}
+              <span class="drop-hint">{entry ? `Swap with ${weekdayName(drag.from)}` : 'Move here'}</span>
+            {:else if shown}
               <span class="meal">{shown.title}</span>
               {#if shown.detail}<span class="detail">{shown.detail}</span>{/if}
             {:else}
@@ -110,19 +231,25 @@
             {/if}
           </span>
         </button>
+        {#if entry}
+          <button type="button" class="grip" aria-label={`Drag ${shown?.title ?? 'this night'} to another night`} onpointerdown={(e) => onGripDown(e, day)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" /><circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" /><circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" /></svg>
+          </button>
+        {/if}
       </li>
     {/each}
   </ol>
+  {#if planned > 1 && !notice}<p class="hint muted">Drag a dinner by its grip to move it. Drop it on another dinner to swap.</p>{/if}
 
   {#if planned}
     <p class="balance muted" aria-label="Week balance">{balance.veggie} veggie, {balance.fresh} new, {repeatsText}</p>
   {/if}
+  {#if notice}<p class="notice muted" role="status">{notice}</p>{/if}
 
   <div class="tools">
     <button class="btn btn-primary" type="button" onclick={() => (typing = true)}>Type the week</button>
     <button class="btn" type="button" disabled={busy} onclick={() => void copyLast()}>Copy last week</button>
   </div>
-  {#if notice}<p class="notice muted" role="status">{notice}</p>{/if}
 
   <IdeasTray {start} all={ideas} {freeNights} />
 
@@ -131,6 +258,17 @@
     <a class="freezer-link" href="#/freezer">Freezer{frozenPortions ? `: ${frozenPortions} portion${frozenPortions === 1 ? '' : 's'}` : ''}</a>
   </div>
 </section>
+
+{#if drag}
+  <!-- The dinner being carried, under the finger. -->
+  <div
+    class={`ghost day-${weekdayIndex(drag.from)}`}
+    style={`width: ${drag.width - 24}px; transform: translate(${drag.left + 12}px, ${drag.y - 84}px)`}
+    aria-hidden="true">
+    <span class="weekday">{weekdayName(drag.from)}</span>
+    <span class="meal">{drag.title}</span>
+  </div>
+{/if}
 
 {#if open}
   <NightSheet {start} date={open} entry={entryFor(start, open)} onclose={() => (open = null)} />
@@ -189,6 +327,9 @@
     display: grid;
     gap: 0.45rem;
   }
+  .days li {
+    position: relative;
+  }
   .day {
     width: 100%;
     display: grid;
@@ -196,7 +337,7 @@
     align-items: center;
     gap: 0.6rem;
     min-height: 68px;
-    padding: 0.5rem 0.9rem 0.5rem 1rem;
+    padding: 0.5rem 3rem 0.5rem 1rem;
     border: 1.5px dashed var(--rule-strong);
     border-radius: var(--r-row);
     background: transparent;
@@ -205,6 +346,9 @@
     font: inherit;
     cursor: pointer;
     transition: background-color 0.35s ease;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
   }
   .day.filled {
     border: 0;
@@ -214,6 +358,58 @@
   }
   .day.quiet {
     background: var(--plate);
+  }
+  /* Dragging: the night being carried fades; the night under the finger shows where it'll land. */
+  .source .day {
+    opacity: 0.35;
+  }
+  .target .day {
+    outline: 2.5px solid var(--day);
+    outline-offset: 2px;
+  }
+  .drop-hint {
+    font-weight: 700;
+    color: var(--plum);
+  }
+  .grip {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 2.75rem;
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    color: var(--pepper);
+    cursor: grab;
+    touch-action: none;
+  }
+  .grip svg {
+    width: 22px;
+    height: 22px;
+    fill: currentColor;
+  }
+  .dragging .grip {
+    cursor: grabbing;
+  }
+  .ghost {
+    position: fixed;
+    z-index: 40;
+    top: 0;
+    left: 0;
+    display: grid;
+    grid-template-columns: 4rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 60px;
+    padding: 0.5rem 1rem 0.5rem 0.75rem;
+    border-radius: var(--r-row);
+    border-left: 6px solid var(--day);
+    background: color-mix(in srgb, var(--day) 22%, var(--plate));
+    box-shadow: 0 10px 28px color-mix(in srgb, var(--plum) 25%, transparent);
+    pointer-events: none;
+    rotate: -1.5deg;
   }
   .date {
     display: grid;
@@ -227,7 +423,8 @@
     color: var(--pepper);
   }
   .filled .weekday,
-  .today .weekday {
+  .today .weekday,
+  .ghost .weekday {
     color: var(--plum);
   }
   .num {
@@ -263,8 +460,17 @@
   .empty {
     color: var(--pepper);
   }
+  .hint {
+    margin: 0.6rem 0 0;
+    font-size: var(--s-1);
+  }
   .balance {
-    margin: 0.65rem 0 0;
+    margin: 0.4rem 0 0;
+    font-size: var(--s-1);
+    font-weight: 600;
+  }
+  .notice {
+    margin: 0.4rem 0 0;
     font-size: var(--s-1);
     font-weight: 600;
   }
@@ -273,10 +479,6 @@
     grid-template-columns: 1fr 1fr;
     gap: 0.5rem;
     margin: 1.25rem 0 0.5rem;
-  }
-  .notice {
-    margin: 0 0 0.5rem;
-    font-size: var(--s-1);
   }
   .more {
     display: flex;

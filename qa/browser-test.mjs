@@ -331,6 +331,55 @@ try {
   ok('type: correction saved as an alias', mealsNow.find((m) => m.name === 'Risotto')?.aliases.includes('lemony thing'))
   ok('type: new meal created', mealsNow.some((m) => m.name === 'Spicy surprise bake'))
 
+  /* ---------- Drag and drop ---------- */
+  const rowCentre = (i, part = '.day') => evaluate(`const r = document.querySelectorAll('.days li')[${i}].querySelector('${part}').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }`)
+  const mouse = (type, p) => send('Input.dispatchMouseEvent', { type, x: p.x, y: p.y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1, pointerType: 'mouse' })
+  const glide = async (kind, a, b, steps = 8) => {
+    for (let i = 1; i <= steps; i++) {
+      const p = { x: a.x + ((b.x - a.x) * i) / steps, y: a.y + ((b.y - a.y) * i) / steps }
+      if (kind === 'mouse') await mouse('mouseMoved', p)
+      else await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: p.x, y: p.y }] })
+      await sleep(25)
+    }
+  }
+  // Mouse: grip on Monday (Fried rice) onto Saturday (empty) moves it.
+  let a = await rowCentre(0, '.grip')
+  let b = await rowCentre(5)
+  await mouse('mousePressed', a)
+  ok('drag: picked up shows a floating copy', await until(`/Fried rice/.test(document.querySelector('.ghost')?.innerText ?? '')`))
+  await glide('mouse', a, b)
+  ok('drag: the target says what will happen', /Move here/.test(await dayText(5)), await dayText(5))
+  await shot('9b-drag.png')
+  await mouse('mouseReleased', b)
+  ok('drag: moved to an empty night', await until(`/Fried rice/.test(document.querySelectorAll('.days .day')[5]?.innerText ?? '') && /Plan dinner/.test(document.querySelectorAll('.days .day')[0]?.innerText ?? '')`), `${await dayText(0)} | ${await dayText(5)}`)
+  ok('drag: no night sheet opened by the drop', !(await evaluate(`return Boolean(document.querySelector('.sheet'))`)))
+  ok('drag: says what happened', await until(`/Moved Fried rice to Sat/.test(document.querySelector('.notice')?.innerText ?? '')`), await text('.notice'))
+  // And back
+  a = await rowCentre(5, '.grip')
+  b = await rowCentre(0)
+  await mouse('mousePressed', a)
+  await glide('mouse', a, b)
+  await mouse('mouseReleased', b)
+  await until(`/Fried rice/.test(document.querySelectorAll('.days .day')[0]?.innerText ?? '')`)
+  // Touch: press and hold Wednesday (Dahl), drag onto Thursday (Risotto): they swap.
+  a = await rowCentre(2)
+  b = await rowCentre(3)
+  await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: a.x, y: a.y }] })
+  await sleep(500)
+  ok('hold: a press and hold picks it up', await until(`document.querySelector('.ghost')`, 1500))
+  await glide('touch', a, b)
+  ok('hold: dropping on a dinner offers a swap', /Swap with Wed/.test(await dayText(3)), await dayText(3))
+  await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await sleep(700) // let the browser's after-touch tap pass
+  ok('hold: swapped', await until(`/Risotto/.test(document.querySelectorAll('.days .day')[2]?.innerText ?? '') && /Dahl/.test(document.querySelectorAll('.days .day')[3]?.innerText ?? '')`), `${await dayText(2)} | ${await dayText(3)}`)
+  ok('hold: saved on the server', await (async () => { for (let i = 0; i < 20; i++) { const w = (await http('GET', `/api/planner/week?start=${await evaluate(`return location.hash.split('/')[2]`)}`, sam.token)).week; const dates = w.entries.map((e) => e.date).sort(); if (w.entries.find((e) => e.date === dates[2])?.raw?.match(/lemony|risotto/i)) return true; await sleep(150) } return false })())
+  // Without dragging: "Move to" in the night sheet swaps them back.
+  await evaluate(`document.querySelectorAll('.days .day')[2].click(); return true`)
+  ok('move to: offered for a planned night', await until(`document.querySelector('.move')`), JSON.stringify({ sheet: await evaluate(`return document.querySelector('.sheet')?.innerText.slice(0, 120) ?? null`), ghost: await evaluate(`return Boolean(document.querySelector('.ghost'))`), errors }))
+  await click('button[aria-label="Swap with Thu"]')
+  ok('move to: swapped back', await until(`/Dahl/.test(document.querySelectorAll('.days .day')[2]?.innerText ?? '') && /Risotto/.test(document.querySelectorAll('.days .day')[3]?.innerText ?? '')`), `${await dayText(2)} | ${await dayText(3)}`)
+  ok('phone: no horizontal overflow after dragging', (await overflow()) <= 0, String(await overflow()))
+
   // Copy into the following week
   await click('a[aria-label="Next week"]')
   await until(`/Plan dinner/.test(document.querySelectorAll('.days .day')[0]?.innerText ?? '')`)

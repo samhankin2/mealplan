@@ -55,6 +55,23 @@ export async function clearNight(start: Day, date: Day): Promise<void> {
   plan.weeks[start] = (plan.weeks[start] ?? []).filter((e) => e.date !== date)
 }
 
+/**
+ * Drag and drop: move a night onto another (an empty night: moved; a planned
+ * one: swapped). Shown at once, put right from the server either way.
+ */
+export async function moveNight(start: Day, from: Day, to: Day): Promise<void> {
+  if (from === to) return
+  const list = plan.weeks[start] ?? []
+  plan.weeks[start] = list
+    .map((e) => (e.date === from ? { ...e, date: to } : e.date === to ? { ...e, date: from } : e))
+    .sort((a, b) => a.date.localeCompare(b.date))
+  try {
+    await api.moveNight(from, to)
+  } finally {
+    await loadWeek(start)
+  }
+}
+
 export async function copyWeek(from: Day, to: Day): Promise<number> {
   const { copied, week } = await api.copyWeek(from, to)
   plan.weeks[to] = week.entries

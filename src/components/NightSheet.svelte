@@ -1,9 +1,9 @@
 <script lang="ts">
   import Sheet from './Sheet.svelte'
   import { api } from '../lib/api'
-  import { shortDate, weekdayIndex, weekdayName } from '../lib/dates'
+  import { shortDate, weekDays, weekdayIndex, weekdayName } from '../lib/dates'
   import { axes, loadMeals, meals } from '../lib/meals.svelte'
-  import { clearNight, searchMeals, setNight } from '../lib/plan.svelte'
+  import { clearNight, entryFor, moveNight, searchMeals, setNight } from '../lib/plan.svelte'
   import { freezer, freezerLabel, loadFreezer } from '../lib/review.svelte'
   import { forNight, suggestAll, type Suggestion } from '../lib/suggest'
   import { history } from '../lib/suggestions.svelte'
@@ -87,6 +87,8 @@
     })
 
   const clear = () => run(() => clearNight(start, date))
+  // The same as dragging, without the drag: onto an empty night moves, onto a planned one swaps.
+  const moveTo = (to: Day) => run(() => moveNight(start, date, to))
 
   // The best few ideas for this particular night (weeknights skip high-effort meals).
   const ideas = $derived(
@@ -175,6 +177,12 @@
   {/if}
   {#if error}<p class="error" role="alert">{error}</p>{/if}
   {#if entry}
+    <p class="axis muted">Move to</p>
+    <div class="move" role="group" aria-label="Move this dinner to">
+      {#each weekDays(start).filter((d) => d !== date) as d (d)}
+        <button type="button" class={`move-to day-${weekdayIndex(d)}`} class:planned={Boolean(entryFor(start, d))} aria-label={`${entryFor(start, d) ? 'Swap with' : 'Move to'} ${weekdayName(d)}`} onclick={() => void moveTo(d)}>{weekdayName(d)}</button>
+      {/each}
+    </div>
     <button class="btn wide clear" type="button" disabled={busy} onclick={() => void clear()}>Clear this night</button>
   {/if}
 </Sheet>
@@ -295,6 +303,29 @@
   }
   .note {
     margin-top: 0.85rem;
+  }
+  .move {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 0.3rem;
+  }
+  /* Empty nights are outlined, planned nights tinted (a tap there swaps). */
+  .move-to {
+    min-height: 40px;
+    border-radius: var(--r-row);
+    border: 1.5px dashed var(--rule-strong);
+    border-left: 4px solid var(--day);
+    background: transparent;
+    color: var(--plum);
+    font-weight: 700;
+    font-stretch: 85%;
+    cursor: pointer;
+  }
+  .move-to.planned {
+    border-style: solid;
+    border-color: transparent;
+    border-left-color: var(--day);
+    background: color-mix(in srgb, var(--day) var(--tint), var(--plate));
   }
   .wide {
     width: 100%;

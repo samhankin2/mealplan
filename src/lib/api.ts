@@ -170,6 +170,10 @@ export const api = {
     return request(`/planner/slots/${encodeURIComponent(date)}`, { method: 'DELETE' })
   },
 
+  moveNight(from: Day, to: Day): Promise<Ok & { moved: number; swapped?: boolean }> {
+    return request('/planner/slots/move', { method: 'POST', body: { from, to } })
+  },
+
   copyWeek(from: Day, to: Day): Promise<Ok & { copied: number; week: Week }> {
     return request('/planner/week/copy', { method: 'POST', body: { from, to } })
   },
