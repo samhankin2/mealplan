@@ -170,6 +170,20 @@ export const api = {
     return request(`/planner/slots/${encodeURIComponent(date)}`, { method: 'DELETE' })
   },
 
+  /** A night typed like a note: saved as the words; linked to a meal only when the server is sure. */
+  textNight(date: Day, text: string): Promise<Ok & { entry: PlanEntry | null; pending: boolean }> {
+    return request(`/planner/slots/${encodeURIComponent(date)}/text`, { method: 'PUT', body: { text } })
+  },
+
+  /** In the background: try harder (AI, with our meals) to find which meal the words are. */
+  matchNight(date: Day): Promise<Ok & { matched: boolean; entry: PlanEntry | null; candidates: { dishId: string; name: string; confidence: number }[] }> {
+    return request(`/planner/slots/${encodeURIComponent(date)}/match`, { method: 'POST' }, { timeoutMs: 40_000 })
+  },
+
+  linkNight(date: Day, dishId: string | null, optionIds: string[] = []): Promise<Ok & { entry: PlanEntry }> {
+    return request(`/planner/slots/${encodeURIComponent(date)}/link`, { method: 'PUT', body: { dishId, optionIds } })
+  },
+
   moveNight(from: Day, to: Day): Promise<Ok & { moved: number; swapped?: boolean }> {
     return request('/planner/slots/move', { method: 'POST', body: { from, to } })
   },

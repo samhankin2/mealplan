@@ -9,7 +9,7 @@
   import { history, loadHistory } from '../lib/suggestions.svelte'
   import { addDays, shortDate, today, weekDays, weekdayIndex, weekdayName, weekLabel, weekStart } from '../lib/dates'
   import { loadMeals, meals } from '../lib/meals.svelte'
-  import { clearNight, copyWeek, describe, entryFor, loadWeek, moveNight, plan, setNight } from '../lib/plan.svelte'
+  import { copyWeek, describe, entryFor, loadWeek, moveNight, plan, putNight } from '../lib/plan.svelte'
   import { freezer, loadFreezer, loadReview, review } from '../lib/review.svelte'
   import { app } from '../lib/state.svelte'
   import type { Day, PlanEntry } from '../lib/types'
@@ -68,7 +68,7 @@
 
   const KIND_TEXT = { out: 'Out', leftovers: 'Leftovers', takeaway: 'Takeaway' } as const
 
-  /** What a planned night reads as on its line: "Fried rice (Prawn)", "Out". */
+  /** The meal a night is linked to, as words: "Fried rice (Prawn)", "Out". */
   function lineText(entry: PlanEntry | undefined): string {
     if (!entry) return ''
     if (entry.kind === 'out' || entry.kind === 'leftovers' || entry.kind === 'takeaway') return KIND_TEXT[entry.kind]
@@ -77,6 +77,10 @@
     return withOptions(meal.name, meal.options.filter((o) => entry.optionIds.includes(o.id)).map((o) => o.name))
   }
 
+  /** What the line says: the words as typed when there are some, like a note. */
+  const lineWords = (entry: PlanEntry | undefined): string => (entry ? (entry.raw ?? lineText(entry)) : '')
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
   function lineDetail(entry: PlanEntry | undefined): string {
     if (!entry) return ''
     return [entry.kind === 'freezer' ? 'From the freezer' : '', entry.note ?? ''].filter(Boolean).join(', ')
@@ -84,8 +88,8 @@
 
   let drafts = $state<Record<Day, string>>({}) // lines typed but not yet saved
   let saving = $state<Record<Day, boolean>>({})
-  // Lines that didn't match a meal: we ask rather than invent a new one.
-  let unmatched = $state<Record<Day, { text: string; newName: string; candidates: { dishId: string; name: string }[] }>>({})
+  let matching = $state<Record<Day, boolean>>({}) // the AI is looking for the meal
+  let guesses = $state<Record<Day, { dishId: string; name: string }[]>>({}) // "did you mean" when it couldn't decide
 
   const lineInput = (day: Day) => document.querySelector<HTMLInputElement>(`.days li[data-date="${day}"] input`)
 
@@ -93,7 +97,7 @@
     const el = e.currentTarget as HTMLInputElement
     if (e.key === 'Escape') {
       delete drafts[day]
-      el.value = lineText(entryFor(start, day))
+      el.value = lineWords(entryFor(start, day))
       el.blur()
       return
     }
@@ -105,37 +109,21 @@
     else el.blur()
   }
 
-  /** Save a line when you leave it: matched to a meal (and its options) the way "Type the week" does. */
+  /** Leaving a line saves the words at once; finding the meal happens behind, without holding you up. */
   async function commit(day: Day, value: string): Promise<void> {
     const text = value.trim()
-    const entry = entryFor(start, day)
-    if (unmatched[day]?.text === text) return // still waiting on which meal it is
-    delete unmatched[day]
-    if (text === lineText(entry)) {
+    if (text === lineWords(entryFor(start, day))) {
       delete drafts[day]
       return
     }
     saving[day] = true
     notice = ''
+    delete guesses[day]
     try {
-      if (!text) {
-        if (entry) await clearNight(start, day)
-      } else {
-        const { items } = await api.parseWeek(start, `${weekdayName(day)} ${text}`)
-        const r = items.find((i) => i.date === day) ?? items[0]
-        if (!r) throw new Error(`Couldn't read "${text}". Try a meal name, or out, leftovers, takeaway.`)
-        if (r.kind !== 'dish' && r.kind !== 'freezer') {
-          await setNight(start, day, { kind: r.kind, raw: r.typed })
-        } else {
-          if (!r.dishId) {
-            // Not sure what this is: keep the line as typed and ask underneath.
-            unmatched[day] = { text, newName: r.newName ?? text, candidates: r.candidates.filter((c) => c.confidence > 0).slice(0, 2) }
-            return
-          }
-          await setNight(start, day, { kind: 'dish', dishId: r.dishId, optionIds: r.optionIds, raw: r.raw })
-        }
-      }
+      const { entry, pending } = await api.textNight(day, text)
+      putNight(start, day, entry)
       delete drafts[day]
+      if (pending) void matchInBackground(day)
     } catch (e) {
       notice = e instanceof Error ? e.message : String(e)
     } finally {
@@ -143,17 +131,31 @@
     }
   }
 
-  /** "Did you mean Dirty cabbage?": plan it, and remember the words for next time. */
-  async function choose(day: Day, dishId: string): Promise<void> {
-    const u = unmatched[day]
-    if (!u) return
+  async function matchInBackground(day: Day): Promise<void> {
+    matching[day] = true
+    try {
+      const r = await api.matchNight(day)
+      if (r.entry) putNight(start, day, r.entry)
+      else guesses[day] = r.candidates.filter((c) => c.confidence > 0).slice(0, 2)
+    } catch {
+      // Not matched is fine: the words are the plan.
+    } finally {
+      matching[day] = false
+    }
+  }
+
+  /** "Did you mean Dirty cabbage?" / "Not this": point the words at a meal (or none). Picking one teaches it the words. */
+  async function link(day: Day, dishId: string | null): Promise<void> {
+    const words = entryFor(start, day)?.raw ?? ''
     saving[day] = true
     try {
-      await setNight(start, day, { kind: 'dish', dishId, raw: u.text })
-      await api.addAlias(dishId, u.text).catch(() => undefined)
-      void loadMeals(true)
-      delete unmatched[day]
-      delete drafts[day]
+      const { entry } = await api.linkNight(day, dishId)
+      putNight(start, day, entry)
+      delete guesses[day]
+      if (dishId && words) {
+        await api.addAlias(dishId, words).catch(() => undefined)
+        void loadMeals(true)
+      }
     } catch (e) {
       notice = e instanceof Error ? e.message : String(e)
     } finally {
@@ -162,15 +164,14 @@
   }
 
   async function addNew(day: Day): Promise<void> {
-    const u = unmatched[day]
-    if (!u) return
+    const words = entryFor(start, day)?.raw?.trim()
+    if (!words) return
     saving[day] = true
     try {
-      const { meal } = await api.createMeal(u.newName)
+      const { meal } = await api.createMeal(words.replace(/^./, (c) => c.toUpperCase()))
       await loadMeals(true)
-      await setNight(start, day, { kind: 'dish', dishId: meal.id, raw: u.text })
-      delete unmatched[day]
-      delete drafts[day]
+      putNight(start, day, (await api.linkNight(day, meal.id)).entry)
+      delete guesses[day]
     } catch (e) {
       notice = e instanceof Error ? e.message : String(e)
     } finally {
@@ -335,7 +336,7 @@
           <input
             class="line"
             class:saving={saving[day]}
-            value={drafts[day] ?? lineText(entry)}
+            value={drafts[day] ?? lineWords(entry)}
             oninput={(e) => (drafts[day] = e.currentTarget.value)}
             onkeydown={(e) => onLineKey(e, day)}
             onblur={(e) => void commit(day, e.currentTarget.value)}
@@ -344,13 +345,24 @@
             autocomplete="off"
             autocapitalize="sentences"
             enterkeyhint="next" />
-          {#if unmatched[day]}
-            {@const u = unmatched[day]}
+          {#if entry?.kind === 'dish' && !entry.dishId}
+            <!-- Just words so far. -->
             <span class="ask">
-              {#each u.candidates as c (c.dishId)}
-                <button type="button" class="link" onclick={() => void choose(day, c.dishId)}>{c.name}?</button>
-              {/each}
-              <button type="button" class="link" onclick={() => void addNew(day)}>Add as new meal</button>
+              {#if matching[day]}
+                <span class="muted">Finding the meal…</span>
+              {:else}
+                {#each guesses[day] ?? [] as c (c.dishId)}
+                  <button type="button" class="link" onclick={() => void link(day, c.dishId)}>{c.name}?</button>
+                {/each}
+                <button type="button" class="link" onclick={() => void addNew(day)}>Add as new meal</button>
+              {/if}
+            </span>
+          {:else if entry?.dishId && entry.raw && norm(entry.raw) !== norm(lineText(entry))}
+            <!-- Your words, matched to a meal. -->
+            <span class="ask">
+              <span class="matched">{lineText(entry)}</span>
+              <button type="button" class="link quiet" onclick={() => void link(day, null)}>Not this</button>
+              {#if detail}<span class="muted">{detail}</span>{/if}
             </span>
           {:else if detail}<span class="detail">{detail}</span>{/if}
           {#if drag && over === day && drag.from !== day}
@@ -549,6 +561,14 @@
     white-space: nowrap;
   }
   /* Under a line we couldn't place: which meal is it? */
+  .matched {
+    color: var(--leek);
+    font-weight: 650;
+  }
+  .link.quiet {
+    color: var(--pepper);
+    font-weight: 550;
+  }
   .ask .link {
     text-align: left;
   }

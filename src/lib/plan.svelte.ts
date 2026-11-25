@@ -35,6 +35,12 @@ export function entryFor(start: Day, date: Day): PlanEntry | undefined {
   return plan.weeks[start]?.find((e) => e.date === date)
 }
 
+/** Put a night the server sent back into its week (null: the night is now empty). */
+export function putNight(start: Day, date: Day, entry: PlanEntry | null): void {
+  if (entry) put(start, entry)
+  else plan.weeks[start] = (plan.weeks[start] ?? []).filter((e) => e.date !== date)
+}
+
 function put(start: Day, entry: PlanEntry): void {
   const list = (plan.weeks[start] ?? []).filter((e) => e.date !== entry.date)
   plan.weeks[start] = [...list, entry].sort((a, b) => a.date.localeCompare(b.date))
