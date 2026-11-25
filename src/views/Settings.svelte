@@ -1,14 +1,14 @@
 <script lang="ts">
   import { api } from '../lib/api'
   import { WEEKDAY_NAMES } from '../lib/dates'
-  import { app, refreshHousehold, signOut } from '../lib/state.svelte'
+  import { app, refreshHousehold, setHousehold, signOut } from '../lib/state.svelte'
 
   let weekError = $state('')
   async function setWeekStart(event: Event): Promise<void> {
     const value = Number((event.currentTarget as HTMLSelectElement).value)
     weekError = ''
     try {
-      app.household = (await api.setHousehold({ weekStartDay: value })).household
+      setHousehold((await api.setHousehold({ weekStartDay: value })).household)
     } catch (e) {
       weekError = e instanceof Error ? e.message : String(e)
     }

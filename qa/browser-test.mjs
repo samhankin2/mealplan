@@ -614,6 +614,23 @@ try {
   ok('usual: unticked ones stay off', await until(`/onions/i.test(document.querySelector('.added')?.innerText ?? '')`) && !/coriander/i.test(await text('.added')))
   ok('usual: section remembered (coriander still Market next time)', (await http('POST', '/api/planner/shopping/items', sam.token, { week: nextWeek, name: 'Coriander' })).item.section === 'market')
 
+  /* ---------- A week that starts on another day ---------- */
+  await evaluate(`location.hash = '#/week/${localDay(21)}'; return true`)
+  await until(`document.querySelectorAll('.days .day').length === 7`)
+  const firstDay = await evaluate(`return document.querySelector('.days li').dataset.date`)
+  await clickText('.range .link', 'change')
+  ok('week start: day choices offered', await until(`document.querySelectorAll('.start-day').length === 6`))
+  await evaluate(`document.querySelectorAll('.start-day')[4].click(); return true`) // two days later
+  const later = (() => { const [y, m, d] = firstDay.split('-').map(Number); const t = new Date(y, m - 1, d + 2, 12); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}` })()
+  ok('week start: the week now starts two days later', await until(`document.querySelector('.days li')?.dataset.date === ${JSON.stringify(later)} && document.querySelectorAll('.days .day').length === 7`), await evaluate(`return document.querySelector('.days li')?.dataset.date`))
+  ok('week start: saved for both phones', ((await http('GET', '/api/planner/household', sam.token)).household.weekStarts ?? []).includes(later))
+  await click('a[aria-label="Previous week"]')
+  ok('week start: the week before is short (2 nights)', await until(`document.querySelectorAll('.days .day').length === 2 && document.querySelector('.days li')?.dataset.date === ${JSON.stringify(firstDay)}`), String(await evaluate(`return document.querySelectorAll('.days .day').length`)))
+  await click('a[aria-label="Next week"]')
+  await click('a[aria-label="Next week"]')
+  ok('week start: following weeks carry on from the new day', await until(`document.querySelector('.days li')?.dataset.date === ${JSON.stringify(later)} ? false : new Date(document.querySelector('.days li').dataset.date + 'T12:00').getDay() === new Date(${JSON.stringify(later)} + 'T12:00').getDay()`))
+  await shot('15-week-start.png')
+
   /* ---------- Sign out ---------- */
   await evaluate(`location.hash = '#/settings'; return true`)
   await until(`[...document.querySelectorAll('button')].some((b) => b.innerText === 'Sign out')`)

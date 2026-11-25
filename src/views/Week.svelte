@@ -7,11 +7,12 @@
   import { withOptions } from '../lib/format'
   import { suggestAll, weekBalance } from '../lib/suggest'
   import { history, loadHistory } from '../lib/suggestions.svelte'
-  import { addDays, shortDate, today, weekDays, weekdayIndex, weekdayName, weekLabel, weekStart } from '../lib/dates'
+  import { addDays, previousWeek, shortDate, today, weekDays, weekdayIndex, weekdayName, weekLabel, weekStart } from '../lib/dates'
+  import { weeks } from '../lib/weeks.svelte'
   import { loadMeals, meals } from '../lib/meals.svelte'
   import { copyWeek, describe, entryFor, loadWeek, moveNight, plan, putNight } from '../lib/plan.svelte'
   import { freezer, loadFreezer, loadReview, review } from '../lib/review.svelte'
-  import { app } from '../lib/state.svelte'
+  import { app, setHousehold } from '../lib/state.svelte'
   import type { Day, PlanEntry } from '../lib/types'
 
   let { start: requested }: { start: Day } = $props()
@@ -20,6 +21,25 @@
   const start = $derived(weekStart(requested, startDay))
   const days = $derived(weekDays(start))
   const isThisWeek = $derived(start === weekStart(today(), startDay))
+
+  // "This week starts on Thursday": any day from three before to three after.
+  let choosingStart = $state(false)
+  const startChoices = $derived([-3, -2, -1, 1, 2, 3].map((n) => addDays(start, n)))
+  async function startOn(date: Day): Promise<void> {
+    busy = true
+    notice = ''
+    try {
+      const { household } = await api.setWeekStart(date, weeks.starts.includes(start) ? start : undefined)
+      setHousehold(household)
+      choosingStart = false
+      location.hash = `#/week/${date}`
+      notice = `This week now starts on ${weekdayName(date)}. Following weeks carry on from there.`
+    } catch (e) {
+      notice = e instanceof Error ? e.message : String(e)
+    } finally {
+      busy = false
+    }
+  }
   const todayDay = today()
   const others = $derived(app.household?.members.filter((m) => !m.me) ?? [])
   const entries = $derived(plan.weeks[start] ?? [])
@@ -53,7 +73,7 @@
     busy = true
     notice = ''
     try {
-      const copied = await copyWeek(addDays(start, -7), start)
+      const copied = await copyWeek(previousWeek(start, startDay), start)
       notice = copied ? `Copied ${copied} night${copied === 1 ? '' : 's'} from last week.` : 'Nothing to copy: last week was empty, or every night here is planned.'
     } catch (e) {
       notice = e instanceof Error ? e.message : String(e)
@@ -294,13 +314,26 @@
   <header class="week-head">
     <div>
       <h1 id="week-title">{isThisWeek ? 'This week' : weekLabel(start)}</h1>
-      {#if isThisWeek}<p class="muted range">{weekLabel(start)}</p>{/if}
+      <p class="muted range">
+        {#if isThisWeek}{weekLabel(start)}. {/if}Starts {weekdayName(start)},
+        <button type="button" class="link" aria-expanded={choosingStart} onclick={() => (choosingStart = !choosingStart)}>change</button>
+      </p>
     </div>
     <nav class="pager" aria-label="Weeks">
-      <a class="btn btn-icon" href={`#/week/${addDays(start, -7)}`} aria-label="Previous week"><Chevron dir="left" /></a>
+      <a class="btn btn-icon" href={`#/week/${previousWeek(start, startDay)}`} aria-label="Previous week"><Chevron dir="left" /></a>
       <a class="btn btn-icon" href={`#/week/${addDays(start, 7)}`} aria-label="Next week"><Chevron /></a>
     </nav>
   </header>
+
+  {#if choosingStart}
+    <div class="starts" role="group" aria-label="Start this week on">
+      {#each startChoices as d (d)}
+        <button type="button" class={`start-day day-${weekdayIndex(d)}`} disabled={busy} onclick={() => void startOn(d)}>
+          <span class="weekday">{weekdayName(d)}</span><span class="num">{shortDate(d)}</span>
+        </button>
+      {/each}
+    </div>
+  {/if}
 
   {#if others.length === 0}
     <p class="note">Planning just for you for now. <a href="#/settings">Link your partner</a> to share the plan.</p>
@@ -421,6 +454,29 @@
     justify-content: space-between;
     gap: 1rem;
     margin-bottom: 0.75rem;
+  }
+  .starts {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.3rem;
+    margin: -0.25rem 0 0.75rem;
+  }
+  .start-day {
+    display: grid;
+    justify-items: center;
+    gap: 0.1rem;
+    padding: 0.4rem 0;
+    border-radius: var(--r-row);
+    border: 1.5px solid var(--rule-strong);
+    border-top: 4px solid var(--day);
+    background: var(--plate);
+    color: var(--plum);
+    font: inherit;
+    cursor: pointer;
+  }
+  .start-day .weekday {
+    font-size: var(--s0);
+    color: var(--plum);
   }
   .range {
     margin: 0.2rem 0 0;

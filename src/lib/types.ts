@@ -73,6 +73,7 @@ export interface Meal {
 export interface Household {
   id: string
   weekStartDay: number // 0 = Monday … 6 = Sunday
+  weekStarts?: Day[] // dates a week started on a different day, oldest first
   members: Member[]
   partner: Partner | null
 }

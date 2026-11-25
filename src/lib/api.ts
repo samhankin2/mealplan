@@ -147,6 +147,11 @@ export const api = {
     return request('/planner/household', { method: 'PUT', body: patch })
   },
 
+  /** "This week starts on Thursday". `replaces`: the week's own start, if it was one. */
+  setWeekStart(date: Day, replaces?: Day): Promise<Ok & { household: Household }> {
+    return request('/planner/week-starts', { method: 'PUT', body: { date, replaces } })
+  },
+
   createMeal(name: string): Promise<Ok & { created: boolean; meal: Meal }> {
     return request('/planner/meals', { method: 'POST', body: { name } })
   },

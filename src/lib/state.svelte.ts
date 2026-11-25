@@ -1,6 +1,7 @@
 import { api, ApiError } from './api'
 import { getToken, setToken } from './auth'
 import { isDay, today } from './dates'
+import { weeks } from './weeks.svelte'
 import type { Day, Household, User } from './types'
 
 export type Route =
@@ -56,7 +57,7 @@ export function navigate(path: string): void {
 /* ------------------------------------------------------------------ */
 
 export async function refreshHousehold(): Promise<void> {
-  app.household = (await api.household()).household
+  setHousehold((await api.household()).household)
 }
 
 /** On boot: resume a saved session (shared with HealthLog) or show sign-in. */
@@ -97,6 +98,12 @@ export async function signOut(): Promise<void> {
   }
   setToken(null)
   app.user = null
-  app.household = null
+  setHousehold(null)
   app.status = 'signed-out'
+}
+
+/** The household, and the week starts that come with it. */
+export function setHousehold(household: Household | null): void {
+  app.household = household
+  weeks.starts = household?.weekStarts ?? []
 }

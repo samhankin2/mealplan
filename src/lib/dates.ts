@@ -1,4 +1,5 @@
 import type { Day } from './types'
+import { weeks } from './weeks.svelte'
 
 /** A Date's local calendar day as YYYY-MM-DD. */
 export function toDay(date: Date): Day {
@@ -33,15 +34,31 @@ export function weekdayIndex(day: Day): number {
   return (fromDay(day).getDay() + 6) % 7
 }
 
-/** The first day of the week holding `day`; weeks start on `startDay` (0 = Monday, the default). */
+const daysBetween = (a: Day, b: Day) => Math.round((fromDay(b).getTime() - fromDay(a).getTime()) / 86_400_000)
+
+/**
+ * The first day of the week holding `day`. Weeks run seven days from the
+ * latest date a week was started on (`weeks.starts`); before any, they start
+ * on `startDay` (0 = Monday, the default).
+ */
 export function weekStart(day: Day = today(), startDay = 0): Day {
+  const from = weeks.starts.filter((s) => s <= day).at(-1)
+  if (from) return addDays(from, Math.floor(daysBetween(from, day) / 7) * 7)
   return addDays(day, -((weekdayIndex(day) - startDay + 7) % 7))
+}
+
+/** The week before: the one holding the day before this week starts. */
+export function previousWeek(start: Day, startDay = 0): Day {
+  return weekStart(addDays(start, -1), startDay)
 }
 
 export const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
+/** A week's days: seven, or fewer when the next week was started early. */
 export function weekDays(start: Day): Day[] {
-  return Array.from({ length: 7 }, (_, i) => addDays(start, i))
+  const next = weeks.starts.find((s) => s > start)
+  const length = next ? Math.min(7, daysBetween(start, next)) : 7
+  return Array.from({ length }, (_, i) => addDays(start, i))
 }
 
 const weekdayFmt = new Intl.DateTimeFormat('en-AU', { weekday: 'short' })
@@ -57,5 +74,5 @@ export function shortDate(day: Day): string {
 
 /** "24 Nov – 30 Nov" */
 export function weekLabel(start: Day): string {
-  return `${shortDate(start)} – ${shortDate(addDays(start, 6))}`
+  return `${shortDate(start)} – ${shortDate(weekDays(start).at(-1) ?? start)}`
 }
