@@ -3,7 +3,7 @@
  * Suggestion engine on synthetic meals with known answers. Plain Node (24+
  * strips the TypeScript types).   node qa/suggest-test.mjs
  */
-import { forNight, opinionOf, regularOf, suggestAll, tray, weekBalance } from '../src/lib/suggest.ts'
+import { forNight, opinionOf, rankIdeas, regularOf, suggestAll, tray, weekBalance } from '../src/lib/suggest.ts'
 
 let pass = 0
 let fail = 0
@@ -125,6 +125,38 @@ const chilli = meal('Chilli', { options: [{ id: 'v', axis: 'Protein', name: 'Veg
 const brandNew = meal('Brand new', { cooked: 0 })
 const e = (dishId, optionIds = []) => ({ ...planned[0], dishId, optionIds })
 eq('balance: veggie, new, repeats', weekBalance([e(veg.id), e(chilli.id, ['v']), e(chilli.id, ['k']), e(brandNew.id)], [veg, chilli, brandNew]), { veggie: 2, fresh: 1, repeats: ['Chilli'] })
+
+/* ---------- Ideas: one score, with reasons ---------- */
+{
+  const p = (who, stars, extra = {}) => ({ optionId: null, ratedAs: who, thumbs: stars >= 3 ? 1 : -1, stars, source: 'review', ...extra })
+  const ago = (d) => new Date(Date.parse(TODAY + 'T00:00:00Z') - d * 86400000).toISOString().slice(0, 10)
+  const both = meal('Both love', { cooked: 8, lastCooked: ago(60), ratings: [p('sam', 5), p('chloe', 5)] })
+  const samOnly = meal('Sam loves', { cooked: 8, lastCooked: ago(60), ratings: [p('sam', 5), p('chloe', 2)] })
+  const curryA = meal('Curry A', { tags: ['curry'], cooked: 5, lastCooked: ago(50), ratings: [p('sam', 5), p('chloe', 4)] })
+  const curryB = meal('Curry B', { tags: ['curry'], cooked: 5, lastCooked: ago(50), ratings: [p('sam', 5), p('chloe', 4)] })
+  const pasta = meal('Pasta', { tags: ['pasta'], cooked: 5, lastCooked: ago(50), ratings: [p('sam', 4), p('chloe', 4)] })
+  const recent = meal('Had it Monday', { cooked: 9, lastCooked: ago(2), ratings: [p('sam', 5), p('chloe', 5)] })
+  const nope = meal('Neither', { cooked: 2, lastCooked: ago(90), ratings: [p('sam', 2), p('chloe', 1)] })
+  const tryIt = meal('Want it', { ratings: [{ optionId: null, ratedAs: 'chloe', thumbs: null, stars: null, want: true }] })
+  const hist = { entries: [both, samOnly, curryA, curryB, pasta].flatMap((m) => [ago(60 + 42), ago(60 + 84), ago(60)].map((date) => ({ dishId: m.id, date }))), importedWeeks: 0 }
+  const all = [both, samOnly, curryA, curryB, pasta, recent, nope, tryIt]
+  const run = (planned = []) => rankIdeas({ meals: all, history: hist, freezer: [], members: [SAM, CHLOE], today: TODAY, planned })
+  const ideas = run()
+  const pos = (name) => ideas.findIndex((i) => i.title === name)
+  ok('ideas: both love it beats one of us loving it', pos('Both love') < pos('Sam loves'), ideas.map((i) => i.title).join(', '))
+  const b = ideas.find((i) => i.title === 'Both love')
+  eq('ideas: headline says why', b?.headline, "You both love it, and it's overdue")
+  ok('ideas: facts give each rating and how often', b?.facts.some((x) => x === 'Sam 5★, Chloe 5★') && b.facts.some((x) => /Usually about every 6 weeks/.test(x)), JSON.stringify(b?.facts))
+  eq('ideas: one-sided is labelled', ideas.find((i) => i.title === 'Sam loves')?.headline, "Sam's favourite")
+  ok('ideas: neither of us likes it: left out', pos('Neither') === -1)
+  ok('ideas: just had it ranks low', pos('Had it Monday') > pos('Pasta'))
+  eq('ideas: wanting to try it says who', ideas.find((i) => i.title === 'Want it')?.headline, 'Chloe wants to try it')
+  ok('ideas: spread out (no two curries at the top)', !(ideas[0].type === 'curry' && ideas[1].type === 'curry'), ideas.slice(0, 3).map((i) => i.title).join(', '))
+  const withCurry = run([{ ...planned[0], dishId: curryA.id, optionIds: [] }])
+  ok('ideas: a curry already planned pushes curries down', withCurry.findIndex((i) => i.title === 'Curry B') > withCurry.findIndex((i) => i.title === 'Pasta'))
+  ok('ideas: and says so', withCurry.find((i) => i.title === 'Curry B')?.facts.includes("There's already a curry this week"))
+  ok('ideas: planned meals are left out', !withCurry.some((i) => i.title === 'Curry A'))
+}
 
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

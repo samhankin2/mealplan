@@ -10,12 +10,14 @@
   import Review from './views/Review.svelte'
   import Freezer from './views/Freezer.svelte'
   import Shop from './views/Shop.svelte'
+  import Ideas from './views/Ideas.svelte'
 
   const current = $derived(route())
 
   // Line icons drawn on a 24 grid: a week grid, a bowl, a basket, a dial.
   const TABS = [
     { href: '#/week', label: 'Week', match: ['week', 'review', 'freezer'], icon: 'M4 5h16v15H4zM4 9h16M9 5v15M14 5v15M8 3v3M16 3v3' },
+    { href: '#/ideas', label: 'Ideas', match: ['ideas'], icon: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z' },
     { href: '#/meals', label: 'Meals', match: ['meals', 'meal'], icon: 'M3 11h18a9 9 0 0 1-18 0zM8 7c0-2 2-2 2-4M13 7c0-2 2-2 2-4' },
     { href: '#/shop', label: 'Shop', match: ['shop'], icon: 'M4 9h16l-1.6 10.5a1 1 0 0 1-1 .5H6.6a1 1 0 0 1-1-.5zM8 9l3-5M16 9l-3-5' },
     { href: '#/settings', label: 'Settings', match: ['settings'], icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1' },
@@ -45,6 +47,8 @@
   <main class:focus={current.name === 'rate'}>
     {#if current.name === 'week'}
       <Week start={current.start} />
+    {:else if current.name === 'ideas'}
+      <Ideas start={current.start} />
     {:else if current.name === 'meals'}
       <Meals />
     {:else if current.name === 'meal'}
@@ -83,7 +87,7 @@
     right: 0;
     bottom: 0;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     max-width: 640px;
     margin: 0 auto;
     padding: 0.35rem 0.5rem calc(0.35rem + env(safe-area-inset-bottom));

@@ -289,3 +289,207 @@ export function weekBalance(entries: PlanEntry[], meals: Meal[]): Balance {
   const repeats = [...counts].filter(([, n]) => n > 1).map(([id]) => byId.get(id)!.name)
   return { veggie, fresh, repeats }
 }
+
+/* ------------------------------------------------------------------ */
+/* Ideas: one score per meal, with everything behind it                 */
+/* ------------------------------------------------------------------ */
+
+const PROTEINS = ['chicken', 'beef', 'pork', 'lamb', 'fish', 'salmon', 'prawn', 'kangaroo', 'tofu', 'turkey', 'duck', 'sausage', 'mince', 'egg', 'paneer', 'halloumi', 'lentil', 'chickpea', 'bean']
+
+export interface PersonView {
+  name: string
+  stars: number | null
+  thumbs: -1 | 1 | null
+  estimate: boolean // rated from memory, not a real cook
+  wants: boolean
+}
+
+export interface Idea {
+  mealId: string
+  title: string // the best variation: "Dirty cabbage (Korean, Beef)"
+  optionIds: string[]
+  score: number
+  headline: string // the main reason, in a sentence
+  facts: string[] // everything else worth knowing
+  people: PersonView[]
+  made: number
+  lastMade: Day | null
+  undated: boolean // made, but only in the Notes import
+  everyDays: number | null // typical days between makes
+  daysSince: number | null
+  overdue: boolean
+  bothLike: boolean
+  oneSided: boolean
+  wanted: boolean
+  isNew: boolean // never made
+  veggie: boolean
+  effort: 1 | 2 | 3 | null
+  tags: string[]
+  protein: string | null
+  type: string | null
+  freezerItemId?: string
+  frozenPortions?: number
+}
+
+const lower = (xs: string[]) => xs.map((x) => x.toLowerCase())
+const proteinIn = (words: string[]) => PROTEINS.find((p) => words.some((w) => w === p || w.startsWith(p) || w.includes(` ${p}`))) ?? null
+const roughly = (days: number) => (days < 10 ? `${days} days` : days < 60 ? `${Math.round(days / 7)} weeks` : `${Math.round(days / 30)} months`)
+
+/** What a planned meal brings to the week: its type, protein and whether it's veggie. */
+function traitsOf(meal: Meal, optionIds: string[]) {
+  const tags = lower(meal.tags.concat(meal.suggestedTags))
+  const options = lower(meal.options.filter((o) => optionIds.includes(o.id)).map((o) => o.name))
+  const words = [...options, ...tags, ...lower(meal.name.split(/\s+/))]
+  const veggie = tags.includes('vegetarian') || tags.includes('vegan') || options.some((o) => VEG_OPTIONS.has(o))
+  return { type: typeOf(meal), protein: veggie ? 'veg' : proteinIn(words), veggie, tags }
+}
+
+/**
+ * Every meal worth suggesting, best first, for a week. The score is mostly
+ * how much we both like it, how overdue it is against how often we have it,
+ * and how it fits what's already planned; picks are spread so the top isn't
+ * three curries.
+ */
+export function rankIdeas(input: SuggestInput): Idea[] {
+  const { meals, history, freezer, members, today } = input
+  const byId = new Map(meals.map((m) => [m.id, m]))
+  const planned = input.planned.filter((e) => (e.kind === 'dish' || e.kind === 'freezer') && e.dishId && byId.has(e.dishId))
+  const plannedIds = new Set(planned.map((e) => e.dishId!))
+  const week = planned.map((e) => traitsOf(byId.get(e.dishId!)!, e.optionIds))
+  const weekTypes = new Set(week.map((w) => w.type).filter(Boolean))
+  const weekProteins = new Set(week.map((w) => w.protein).filter(Boolean))
+  const weekHasVeggie = week.some((w) => w.veggie)
+  const datedBy = new Map<string, Day[]>()
+  for (const e of history.entries) datedBy.set(e.dishId, [...(datedBy.get(e.dishId) ?? []), e.date])
+  const people = members.length ? members : [{ id: 'both', name: 'You', me: true }]
+
+  const ideas: Idea[] = []
+  for (const meal of meals) {
+    if (meal.neverSuggest || (meal.snoozedUntil && meal.snoozedUntil >= today) || plannedIds.has(meal.id)) continue
+    const hidden = new Set(meal.hidden ?? [])
+    const ratings = meal.ratings.filter((r) => !(r.optionId && hidden.has(r.optionId)))
+    const op = opinionOf(meal)
+    const t = timingOf(meal, (datedBy.get(meal.id) ?? []).sort(), history.importedWeeks, today)
+
+    // Each of us: our best rating on any variation ("both" counts for each).
+    const view: PersonView[] = people.map((m) => {
+      const mine = ratings.filter((r) => r.ratedAs === m.id || r.ratedAs === 'both')
+      const scoredMine = mine.filter(scored).sort((a, b) => (b.stars ?? 0) - (a.stars ?? 0) || (b.thumbs ?? 0) - (a.thumbs ?? 0))
+      const best = scoredMine[0]
+      return { name: m.name, stars: best?.stars ?? null, thumbs: best?.thumbs ?? null, estimate: Boolean(best) && best.source !== 'review', wants: mine.some((r) => r.want) }
+    })
+    const level = (p: PersonView) => p.stars ?? (p.thumbs === 1 ? 4 : p.thumbs === -1 ? 1.5 : null)
+    const levels = view.map(level)
+    const known = levels.filter((l): l is number => l !== null)
+    if (known.length && known.every((l) => l <= 2)) continue // neither of us likes it
+    const lo = known.length ? Math.min(...known) : null
+    const hi = known.length ? Math.max(...known) : null
+    const bothLike = known.length === view.length && view.length > 1 && lo !== null && lo >= 4
+    const oneSided = view.length > 1 && hi !== null && hi >= 4 && (known.length < view.length || (lo !== null && lo <= 3))
+    const wanters = view.filter((p) => p.wants)
+
+    // How much we like it, -1..1: the lower of our ratings counts double, so "both like it" wins.
+    let like = 0
+    if (lo !== null && hi !== null) like = ((lo * 2 + hi) / 3 - 3) / 2
+    if (known.length && known.length < view.length) like *= 0.7 // only one of us has rated it
+    if (!known.length) like = meal.cooked >= 3 ? 0.1 : 0
+
+    // How overdue, 0..1, against how often we have it.
+    // A rhythm only once there's enough to go on: three makes, at least a week apart.
+    const everyDays = regularOf(meal, t)?.every ?? (t.cadence && meal.cooked >= 3 && t.cadence >= 7 ? Math.round(t.cadence) : null)
+    const finite = t.daysSince !== Infinity
+    let due = 0
+    if (finite && everyDays) due = Math.max(0, Math.min(1, (t.daysSince / everyDays - 0.8) / 1.5))
+    else if (finite && t.daysSince >= FORGOTTEN_DAYS) due = 0.5
+    if (t.undated) due = Math.min(due, 0.5) // a guess: it's only in the Notes
+    const tooSoon = finite && !t.undated && t.daysSince < 14
+    const overdue = due >= 0.4 && !tooSoon
+
+    const { title, optionIds } = titleOf(meal, op.want && !known.length ? op.want : op.best)
+    const traits = traitsOf(meal, optionIds)
+    const item = freezer.filter((f) => f.dishId === meal.id && f.portions > 0).sort((a, b) => (a.frozenOn ?? '').localeCompare(b.frozenOn ?? ''))[0]
+
+    let score = like * 1.0 + due * 0.8
+    if (tooSoon) score -= 0.6
+    if (traits.type && weekTypes.has(traits.type)) score -= 0.5
+    if (traits.protein && traits.protein !== 'veg' && weekProteins.has(traits.protein)) score -= 0.3
+    if (traits.veggie && !weekHasVeggie && planned.length) score += 0.25
+    if (item) score += 0.3
+    if (wanters.length) score += wanters.length > 1 ? 0.4 : 0.25
+    if (meal.cooked === 0 && !wanters.length && !known.length) score -= 0.3
+
+    // In words.
+    const facts: string[] = []
+    const rated = view.filter((_, i) => levels[i] !== null)
+    const memory = rated.length && rated.every((p) => p.estimate)
+    if (rated.length) facts.push(rated.map((p) => `${p.name} ${p.stars ? `${p.stars}★` : p.thumbs === 1 ? 'thumbs up' : 'thumbs down'}${p.estimate && !memory ? ' (from memory)' : ''}`).join(', ') + (memory ? ', from memory' : ''))
+    else facts.push('Not rated yet')
+    if (meal.cooked) facts.push(t.undated ? `In your Notes ${meal.cooked} time${meal.cooked === 1 ? '' : 's'}, not made since you started the app` : `Made ${meal.cooked} time${meal.cooked === 1 ? '' : 's'}, last ${roughly(t.daysSince)} ago`)
+    else facts.push('Never made')
+    if (everyDays) facts.push(`Usually about every ${roughly(everyDays)}`)
+    if (item) facts.push(`${item.portions} portion${item.portions === 1 ? '' : 's'} in the freezer`)
+    if (traits.type && weekTypes.has(traits.type)) facts.push(`There's already a ${traits.type} this week`)
+    else if (traits.protein && traits.protein !== 'veg' && weekProteins.has(traits.protein)) facts.push(`There's already ${traits.protein} this week`)
+    if (traits.veggie && !weekHasVeggie && planned.length) facts.push('Would be the veggie night')
+    if (tooSoon) facts.push(`Only had it ${t.daysSince} days ago`)
+
+    const names = (ps: PersonView[]) => (ps.length === view.length && view.length > 1 ? 'You both' : ps.map((p) => p.name).join(' and '))
+    let headline: string
+    if (item && like >= 0) headline = `Ready in the freezer${bothLike ? ', and you both like it' : ''}`
+    else if (bothLike && overdue) headline = `You both love it, and it's overdue`
+    else if (bothLike) headline = `You both love it`
+    else if (wanters.length) headline = `${names(wanters)} want${wanters.length === 1 && view.length > 1 ? 's' : ''} to try it`
+    else if (overdue && like > 0) headline = `A favourite that's overdue`
+    else if (oneSided) {
+      const fan = view[levels.indexOf(hi)]
+      headline = `${fan.name}'s favourite`
+    } else if (!known.length && meal.cooked >= 3) headline = `Made often, never rated`
+    else headline = like > 0 ? 'Liked' : 'Something different'
+
+    ideas.push({
+      mealId: meal.id,
+      title,
+      optionIds,
+      score: Math.round(score * 100) / 100,
+      headline,
+      facts,
+      people: view,
+      made: meal.cooked,
+      lastMade: meal.lastCooked,
+      undated: t.undated,
+      everyDays,
+      daysSince: finite && !t.undated ? t.daysSince : null,
+      overdue,
+      bothLike,
+      oneSided,
+      wanted: wanters.length > 0,
+      isNew: meal.cooked === 0,
+      veggie: traits.veggie,
+      effort: meal.effort,
+      tags: meal.tags,
+      protein: traits.protein,
+      type: traits.type,
+      ...(item ? { freezerItemId: item.id, frozenPortions: item.portions } : {}),
+    })
+  }
+
+  // Spread the top: each pick makes others of its type or protein a little less likely.
+  const left = [...ideas].sort((a, b) => b.score - a.score)
+  const out: Idea[] = []
+  const types = new Map<string, number>()
+  const proteins = new Map<string, number>()
+  while (left.length) {
+    let bestI = 0
+    let bestS = -Infinity
+    for (let i = 0; i < Math.min(left.length, 40); i++) {
+      const x = left[i]
+      const s = x.score - 0.25 * ((x.type && types.get(x.type)) || 0) - 0.15 * ((x.protein && proteins.get(x.protein)) || 0)
+      if (s > bestS) [bestS, bestI] = [s, i]
+    }
+    const [x] = left.splice(bestI, 1)
+    out.push(x)
+    if (x.type) types.set(x.type, (types.get(x.type) ?? 0) + 1)
+    if (x.protein) proteins.set(x.protein, (proteins.get(x.protein) ?? 0) + 1)
+  }
+  return out
+}

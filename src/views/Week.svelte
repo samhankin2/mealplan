@@ -2,11 +2,9 @@
   import Chevron from '../components/Chevron.svelte'
   import NightSheet from '../components/NightSheet.svelte'
   import TypeWeekSheet from '../components/TypeWeekSheet.svelte'
-  import IdeasTray from '../components/IdeasTray.svelte'
   import { api } from '../lib/api'
   import { withOptions } from '../lib/format'
-  import { suggestAll, weekBalance } from '../lib/suggest'
-  import { history, loadHistory } from '../lib/suggestions.svelte'
+  import { weekBalance } from '../lib/suggest'
   import { addDays, previousWeek, shortDate, today, weekDays, weekdayIndex, weekdayName, weekLabel, weekStart } from '../lib/dates'
   import { weeks } from '../lib/weeks.svelte'
   import { loadMeals, meals } from '../lib/meals.svelte'
@@ -59,13 +57,9 @@
     void loadFreezer()
   })
   const frozenPortions = $derived(freezer.items.reduce((n, f) => n + f.portions, 0))
-  $effect(() => void loadHistory())
 
   // Suggestions for this week's free nights (today onwards).
   const freeNights = $derived(days.filter((d) => d >= todayDay && !entries.some((e) => e.date === d)))
-  const ideas = $derived(
-    suggestAll({ meals: meals.list, history, freezer: freezer.items, members: app.household?.members ?? [], today: todayDay, planned: entries }),
-  )
   const balance = $derived(weekBalance(entries, meals.list))
   const repeatsText = $derived(balance.repeats.length ? `${balance.repeats.join(' and ')} twice` : 'no repeats')
 
@@ -418,7 +412,9 @@
     <button type="button" class="link" onclick={() => (typing = true)}>Paste a week</button>
   </p>
 
-  <IdeasTray {start} all={ideas} {freeNights} />
+  {#if freeNights.length}
+    <a class="ideas-link" href={`#/ideas/${start}`}>{freeNights.length} free night{freeNights.length === 1 ? '' : 's'}: see ideas</a>
+  {/if}
 
   <div class="more">
     <a class="btn shop-link" href={`#/shop/${start}`}>Shopping list</a>
@@ -712,6 +708,12 @@
     font-weight: 650;
     text-decoration: underline;
     cursor: pointer;
+  }
+  .ideas-link {
+    display: inline-block;
+    margin-top: 1rem;
+    color: var(--plum);
+    font-weight: 700;
   }
   .more {
     display: flex;
