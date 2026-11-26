@@ -3,13 +3,14 @@
   import PersonaPicker from '../components/PersonaPicker.svelte'
   import { app } from '../lib/state.svelte'
   import { wants as wantList, loadWants } from '../lib/wants.svelte'
-  import { bestRating, isRated, loadMeals, meals, persona, ratedCount, ratedParts, rateables, ratingFor, sortedMeals } from '../lib/meals.svelte'
+  import { onWantList } from '../lib/wants.svelte'
+  import { bestRating, isRated, loadMeals, meals, persona, ratedCount, ratedParts, rateables, sortedMeals } from '../lib/meals.svelte'
 
   let query = $state('')
   let filter = $state<'all' | 'unrated' | 'want'>('all')
-  const onList = (m: (typeof meals.list)[number]): boolean => wantList.list.some((w) => w.dishId === m.id)
-  const wants = (m: (typeof meals.list)[number]): number => rateables(m).filter((x) => ratingFor(m, x.key, persona.value)?.want).length
-  const wanted = (m: (typeof meals.list)[number]): boolean => wants(m) > 0 || onList(m)
+  // On the want-to-make list: the meal, or how many of its variations.
+  const onList = (m: (typeof meals.list)[number]): boolean => wantList.list.some((w) => w.dishId === m.id && !w.done)
+  const wants = (m: (typeof meals.list)[number]): number => rateables(m).filter((x) => onWantList(m.id, x.key)).length
 
   onMount(() => {
     void loadMeals(true)
@@ -30,7 +31,7 @@
   const shown = $derived(
     sortedMeals(meals.list).filter((m) => {
       if (filter === 'unrated' && isRated(m, persona.value)) return false
-      if (filter === 'want' && !wanted(m)) return false
+      if (filter === 'want' && !onList(m)) return false
       const q = query.trim().toLowerCase()
       return !q || m.name.toLowerCase().includes(q) || m.aliases.some((a) => a.includes(q)) || m.tags.some((t) => t.toLowerCase().includes(q))
     }),

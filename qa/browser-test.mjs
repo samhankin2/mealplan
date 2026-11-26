@@ -222,7 +222,8 @@ try {
     await new Promise((r) => setTimeout(r, 50))
     ;[...document.querySelectorAll('.rows .opt')].find((b) => b.innerText.includes(${JSON.stringify(opt)})).click(); return true`)
   await rowOption('Risotto', 'Chorizo', 'Want to make')
-  ok('want: the row says Want to make', await until(`[...document.querySelectorAll('.want-pill')].some((b) => /Chorizo/.test(b.getAttribute('aria-label')))`))
+  ok('want: the row is marked on the want-to-make list', await until(`[...document.querySelectorAll('.rows li.wanted .first')].some((e) => /Chorizo/.test(e.innerText))`))
+  ok('want: and can still be rated', Boolean(await evaluate(`return document.querySelector('button[aria-label="Risotto, Chorizo: 3 stars"]')`)))
   ok('want: counts as answered', /2\/11/.test(await text('#meal-name .count')), await text('#meal-name .count'))
   await rowOption('Risotto', 'Pumpkin', 'Never had')
   ok('never had: the row leaves the list', await until(`document.querySelectorAll('.rows .label').length === 10`))
@@ -262,9 +263,13 @@ try {
   ok('rate: each variation saved as Both', fried.ratings.filter((r) => r.ratedAs === 'both' && r.optionId && !r.optionId.includes('+')).length === 2)
   ok('rate: every combination saved', cab.ratings.filter((r) => r.ratedAs === 'both' && r.optionId?.includes('+')).length === 6)
   const ris = saved.find((m) => m.name === 'Risotto')
-  ok('saved: want to make', ris.ratings.some((r) => r.want && ris.options.find((o) => o.id === r.optionId)?.name === 'Chorizo'))
+  const listed = (await http('GET', '/api/planner/wants', chloe.token)).wants
+  const chorizo = ris.options.find((o) => o.name === 'Chorizo')
+  ok('saved: want to make is a line on the shared list', listed.some((w) => w.dishId === ris.id && w.text === 'Risotto (Chorizo)' && JSON.stringify(w.optionIds) === JSON.stringify([chorizo.id])), JSON.stringify(listed))
+  ok('saved: no want flag on ratings', !saved.some((m) => m.ratings.some((r) => 'want' in r)))
   ok('saved: never had hidden for the household', ris.hidden.length === 1 && ris.options.find((o) => o.id === ris.hidden[0])?.name === 'Pumpkin')
-  ok('saved: the removed meal is back', saved.some((m) => m.name === 'Pulled pork sandwiches' && m.ratings.some((r) => r.want)))
+  const pps = saved.find((m) => m.name === 'Pulled pork sandwiches')
+  ok('saved: the removed meal is back, on the list', Boolean(pps) && listed.some((w) => w.dishId === pps.id && w.optionIds.length === 0))
 
   // Detail: rate an option as Chloe, accept a tag, send a note
   await evaluate(`location.hash = '#/meals/${fried.id}'; return true`)
@@ -498,6 +503,11 @@ try {
   ok('ideas: the week only links to them', await until(`/7 free nights: see ideas/.test(document.querySelector('.ideas-link')?.innerText ?? '')`) && !(await evaluate(`return Boolean(document.querySelector('.ideas'))`)))
   await click('.ideas-link')
   ok('ideas tab: opens for that week', await until(`document.querySelector('#ideas-title') && /Free nights/.test(document.querySelector('.free')?.innerText ?? '')`))
+  const padTexts = `[...document.querySelectorAll('.pad .want:not(.new) textarea')].map((t) => t.value)`
+  ok('want pad: what we wanted on the rating screen is here too', await until(`${padTexts}.includes('Risotto (Chorizo)') && ${padTexts}.includes('Pulled pork sandwiches')`), await text('.pad'))
+  // Start the pad from empty (a wanted variation would name the idea instead of the best-rated one).
+  await evaluate(`for (const b of [...document.querySelectorAll('.pad .want .link')].filter((b) => b.innerText === 'Remove')) b.click(); return true`)
+  ok('want pad: cleared', await until(`document.querySelectorAll('.pad .want:not(.new)').length === 0`), await text('.pad'))
   ok('ideas tab: Risotto suggested', await until(`Boolean([...document.querySelectorAll('.idea')].find((c) => new RegExp("^Risotto", 'i').test(c.querySelector('h2').innerText)))`), await evaluate(`return [...document.querySelectorAll('.idea h2')].map((h) => h.innerText).join(' | ')`))
   const risottoCard = await evaluate(`return [...document.querySelectorAll('.idea')].find((c) => new RegExp("^Risotto", 'i').test(c.querySelector('h2').innerText)).innerText`)
   ok('ideas tab: says why, with the rating and history', /5★/.test(risottoCard) && /Made \d+ times?, last/.test(risottoCard), risottoCard)

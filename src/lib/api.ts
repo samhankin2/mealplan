@@ -130,7 +130,6 @@ export const api = {
     ratedAs: RatedAs
     thumbs: -1 | 1 | null
     stars: number | null
-    want?: boolean
   }): Promise<Ok & { rating: Rating | null }> {
     return request('/planner/ratings', { method: 'PUT', body })
   },
@@ -164,9 +163,12 @@ export const api = {
     return request('/planner/wants', {}, options)
   },
 
-  /** A want-to-make line typed like a note: saved at once; linked to a meal only when the server is sure. */
-  addWant(text: string, level: WantLevel): Promise<Ok & { want: WantLine; pending: boolean }> {
-    return request('/planner/wants', { method: 'POST', body: { text, level } })
+  /**
+   * A want-to-make line typed like a note: saved at once; linked to a meal only when the server is sure.
+   * With `meal`, it's for that meal and variation (an open line for it already comes back as it is).
+   */
+  addWant(text: string, level: WantLevel, meal?: { dishId: string; optionIds: string[] }): Promise<Ok & { want: WantLine; pending: boolean }> {
+    return request('/planner/wants', { method: 'POST', body: { text, level, ...meal } })
   },
 
   updateWant(

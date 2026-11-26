@@ -33,7 +33,6 @@ export interface Rating {
   ratedAs: RatedAs
   thumbs: -1 | 1 | null
   stars: number | null
-  want?: boolean // not had yet, want to make it (no thumbs or stars)
   source?: 'estimate' | 'review' // estimate = rated from memory; review = from a real cook
 }
 

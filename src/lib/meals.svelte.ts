@@ -1,5 +1,6 @@
 import { api } from './api'
 import type { Meal, RatedAs, Rating } from './types'
+import { onWantList } from './wants.svelte'
 
 export const meals = $state({
   list: [] as Meal[],
@@ -108,42 +109,37 @@ export function allRateables(meal: Meal): Rateable[] {
 }
 
 const scored = (r: Rating | undefined): boolean => Boolean(r && r.thumbs !== null && r.stars !== null)
-/** Answered: scored, or marked "want to make". */
-export const answered = (r: Rating | undefined): boolean => Boolean(r && (r.want || scored(r)))
+/** Answered: scored by this persona, or on the want-to-make list (haven't had it, want to). */
+export const answered = (meal: Meal, key: string | null, ratedAs: RatedAs): boolean =>
+  scored(ratingFor(meal, key, ratedAs)) || onWantList(meal.id, key)
 
 /**
  * Done for this persona: every variation / combination on the list is scored
- * (thumbs and stars) or marked "want to make", and, once anything has been
+ * (thumbs and stars) or on the want-to-make list, and, once anything has been
  * eaten, the meal has an effort (shared by the household, set on the meal).
  */
 export function isRated(meal: Meal, ratedAs: RatedAs): boolean {
-  const rows = rateables(meal).map((x) => ratingFor(meal, x.key, ratedAs))
-  if (!rows.every(answered)) return false
-  return meal.effort !== null || !rows.some(scored)
+  const keys = rateables(meal).map((x) => x.key)
+  if (!keys.every((k) => answered(meal, k, ratedAs))) return false
+  return meal.effort !== null || !keys.some((k) => scored(ratingFor(meal, k, ratedAs)))
 }
 
 /** This persona has answered at least one variation of the meal. */
 export function isStarted(meal: Meal, ratedAs: RatedAs): boolean {
-  return rateables(meal).some((x) => answered(ratingFor(meal, x.key, ratedAs)))
-}
-
-/** Every variation this persona answered is "want to make". */
-export function isWanted(meal: Meal, ratedAs: RatedAs): boolean {
-  const rows = rateables(meal).map((x) => ratingFor(meal, x.key, ratedAs))
-  return rows.some((r) => r?.want) && rows.every((r) => !r || r.want)
+  return rateables(meal).some((x) => answered(meal, x.key, ratedAs))
 }
 
 /** [done, total] variations rated by this persona for one meal. */
 export function ratedParts(meal: Meal, ratedAs: RatedAs): [number, number] {
   const all = rateables(meal)
-  return [all.filter((x) => answered(ratingFor(meal, x.key, ratedAs))).length, all.length]
+  return [all.filter((x) => answered(meal, x.key, ratedAs)).length, all.length]
 }
 
 /** The best rating this persona gave any variation (for list summaries). */
 export function bestRating(meal: Meal, ratedAs: RatedAs): Rating | undefined {
   const keys = new Set(rateables(meal).map((x) => x.key))
   return meal.ratings
-    .filter((r) => r.ratedAs === ratedAs && !r.want && keys.has(r.optionId ?? null))
+    .filter((r) => r.ratedAs === ratedAs && keys.has(r.optionId ?? null))
     .sort((a, b) => (b.stars ?? 0) - (a.stars ?? 0) || (b.thumbs ?? 0) - (a.thumbs ?? 0))[0]
 }
 
@@ -187,14 +183,14 @@ export async function rate(
   mealId: string,
   optionId: string | null,
   ratedAs: RatedAs,
-  next: { thumbs: -1 | 1 | null; stars: number | null; want?: boolean },
+  next: { thumbs: -1 | 1 | null; stars: number | null },
 ): Promise<void> {
   const meal = mealById(mealId)
   if (!meal) return
   const before = meal.ratings.map((r) => ({ ...r }))
   const others = meal.ratings.filter((r) => !((r.optionId ?? null) === optionId && r.ratedAs === ratedAs))
-  const empty = next.thumbs === null && next.stars === null && !next.want
-  meal.ratings = empty ? others : [...others, { optionId, ratedAs, ...next, want: Boolean(next.want) }]
+  const empty = next.thumbs === null && next.stars === null
+  meal.ratings = empty ? others : [...others, { optionId, ratedAs, ...next }]
   try {
     const { rating } = await api.setRating({ dishId: mealId, optionId, ratedAs, ...next })
     // ratedAs 'me' comes back as an id; keep the stored key consistent.

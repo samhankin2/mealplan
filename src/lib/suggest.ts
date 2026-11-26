@@ -60,7 +60,7 @@ const weeks = (days: number) => (days >= 14 ? `${Math.round(days / 7)} weeks` : 
 /* What we think of a meal                                              */
 /* ------------------------------------------------------------------ */
 
-const scored = (r: Rating) => !r.want && (r.thumbs !== null || r.stars !== null)
+const scored = (r: Rating) => r.thumbs !== null || r.stars !== null
 
 /**
  * How much a rating counts, in stars. Most ratings so far were given from
@@ -81,8 +81,6 @@ export interface Opinion {
   disliked: boolean // every opinion is thumbs down
   stars: number | null // best stars on any variation
   best: Rating | undefined // the best-rated variation
-  wanted: boolean // "want to make" on any variation
-  want: Rating | undefined // the variation we want to make
   rated: boolean
 }
 
@@ -98,8 +96,6 @@ export function opinionOf(meal: Meal): Opinion {
     disliked: s.length > 0 && ups === 0,
     stars: best?.stars ?? null,
     best,
-    wanted: rs.some((r) => r.want),
-    want: rs.find((r) => r.want),
     rated: s.length > 0,
   }
 }
@@ -155,6 +151,13 @@ export function regularOf(meal: Meal, timing: Timing): { every: number; auto: bo
 /* Lanes                                                                */
 /* ------------------------------------------------------------------ */
 
+/** The open want-to-make line for a meal that we want most. */
+const wantedMost = (wants: WantLine[] | undefined, mealId: string): WantLine | undefined =>
+  (wants ?? []).filter((w) => w.dishId === mealId && !w.done).sort((a, b) => b.level - a.level)[0]
+
+/** A rating-shaped stand-in naming a want-to-make line's variation, for titleOf. */
+const asVariation = (w: WantLine): Rating => ({ optionId: w.optionIds.length ? w.optionIds.join('+') : null, ratedAs: 'both', thumbs: null, stars: null })
+
 export function suggestAll(input: SuggestInput): Suggestion[] {
   const { meals, history, freezer, members, today } = input
   const plannedIds = new Set(input.planned.filter((e) => e.dishId).map((e) => e.dishId!))
@@ -191,7 +194,8 @@ export function suggestAll(input: SuggestInput): Suggestion[] {
     if (lastYear.has(meal.id) && t.daysSince > 21) add('lastYear', `You had this around now last year`, op.stars ?? 3)
     if (!op.rated && meal.cooked >= 3 && t.daysSince >= FORGOTTEN_DAYS) add('rediscover', `Made ${meal.cooked} times, ${since}`, meal.cooked)
     // Named as the variation we said we want, not the best-rated one we've already had.
-    if (op.wanted) add('want', 'You said you want to make this', (op.stars ?? 3) + 1, titleOf(meal, op.want))
+    const pad = wantedMost(input.wants, meal.id)
+    if (pad) add('want', 'On your want-to-make list', (op.stars ?? 3) + pad.level / 2, titleOf(meal, asVariation(pad)))
     else if (meal.cooked === 0 && op.liked) add('want', `${starText}, not made yet`, op.stars ?? 3)
     if (meal.effort === 3 && op.liked && (op.stars ?? 0) >= 4 && t.daysSince >= 21) add('weekend', `${starText}, worth the effort`, op.stars ?? 4)
 
@@ -316,7 +320,6 @@ export interface PersonView {
   stars: number | null
   thumbs: -1 | 1 | null
   estimate: boolean // rated from memory, not a real cook
-  wants: boolean
 }
 
 export interface Idea {
@@ -390,7 +393,7 @@ export function rankIdeas(input: SuggestInput): Idea[] {
     const ratings = meal.ratings.filter((r) => !(r.optionId && hidden.has(r.optionId)))
     const op = opinionOf(meal)
     // On the want-to-make list: the line we want most.
-    const pad = (input.wants ?? []).filter((w) => w.dishId === meal.id && !w.done).sort((a, b) => b.level - a.level)[0]
+    const pad = wantedMost(input.wants, meal.id)
     const wantLevel = pad?.level ?? null
     const t = timingOf(meal, (datedBy.get(meal.id) ?? []).sort(), history.importedWeeks, today)
 
@@ -400,7 +403,7 @@ export function rankIdeas(input: SuggestInput): Idea[] {
       const byStars = (a: Rating, b: Rating) => (b.stars ?? 0) - (a.stars ?? 0) || (b.thumbs ?? 0) - (a.thumbs ?? 0)
       const scoredMine = mine.filter(scored)
       const best = scoredMine.filter(fromCooking).sort(byStars)[0] ?? scoredMine.sort(byStars)[0]
-      return { name: m.name, stars: best?.stars ?? null, thumbs: best?.thumbs ?? null, estimate: Boolean(best) && !fromCooking(best), wants: mine.some((r) => r.want) }
+      return { name: m.name, stars: best?.stars ?? null, thumbs: best?.thumbs ?? null, estimate: Boolean(best) && !fromCooking(best) }
     })
     // As given, for the words ("you both love it"); weighted, for the score.
     const level = (p: PersonView) => p.stars ?? (p.thumbs === 1 ? 4 : p.thumbs === -1 ? 1.5 : null)
@@ -414,7 +417,6 @@ export function rankIdeas(input: SuggestInput): Idea[] {
     const hi = known.length ? Math.max(...known) : null
     const bothLike = known.length === view.length && view.length > 1 && lo !== null && lo >= 4
     const oneSided = view.length > 1 && hi !== null && hi >= 4 && (known.length < view.length || (lo !== null && lo <= 3))
-    const wanters = view.filter((p) => p.wants)
 
     // How much we like it, -1..1: the lower of our ratings counts double, so "both like it" wins.
     let like = 0
@@ -434,9 +436,7 @@ export function rankIdeas(input: SuggestInput): Idea[] {
     const tooSoon = finite && !t.undated && t.daysSince < 14
     const overdue = due >= 0.4 && !tooSoon
 
-    const { title, optionIds } = pad?.optionIds.length
-      ? titleOf(meal, { optionId: pad.optionIds.join('+'), ratedAs: 'both', thumbs: null, stars: null })
-      : titleOf(meal, op.want && !known.length ? op.want : op.best)
+    const { title, optionIds } = titleOf(meal, pad?.optionIds.length ? asVariation(pad) : op.best)
     const traits = traitsOf(meal, optionIds)
     const item = freezer.filter((f) => f.dishId === meal.id && f.portions > 0).sort((a, b) => (a.frozenOn ?? '').localeCompare(b.frozenOn ?? ''))[0]
 
@@ -446,9 +446,8 @@ export function rankIdeas(input: SuggestInput): Idea[] {
     if (traits.protein && traits.protein !== 'veg' && weekProteins.has(traits.protein)) score -= 0.3
     if (traits.veggie && !weekHasVeggie && planned.length) score += 0.25
     if (item) score += 0.3
-    if (wanters.length) score += wanters.length > 1 ? 0.4 : 0.25
     if (wantLevel) score += WANT_BOOST[wantLevel]
-    if (meal.cooked === 0 && !wanters.length && !wantLevel && !known.length) score -= 0.3
+    if (meal.cooked === 0 && !wantLevel && !known.length) score -= 0.3
 
     // In words.
     const facts: string[] = []
@@ -466,14 +465,12 @@ export function rankIdeas(input: SuggestInput): Idea[] {
     if (tooSoon) facts.push(`Only had it ${t.daysSince} days ago`)
     if (pad) facts.unshift(sameWords(pad.text, title) || sameWords(pad.text, meal.name) ? `On your want-to-make list (${WANT_LABEL[pad.level].toLowerCase()})` : `Want to make (${WANT_LABEL[pad.level].toLowerCase()}): "${pad.text}"`)
 
-    const names = (ps: PersonView[]) => (ps.length === view.length && view.length > 1 ? 'You both' : ps.map((p) => p.name).join(' and '))
     let headline: string
     if (item && like >= 0) headline = `Ready in the freezer${bothLike ? ', and you both like it' : ''}`
     else if (wantLevel === 3) headline = 'You really want to make this'
     else if (bothLike && overdue) headline = `You both love it, and it's overdue`
     else if (bothLike) headline = `You both love it`
-    else if (wantLevel === 2) headline = 'On your want-to-make list'
-    else if (wanters.length) headline = `${names(wanters)} want${wanters.length === 1 && view.length > 1 ? 's' : ''} to try it`
+    else if (wantLevel) headline = 'On your want-to-make list'
     else if (oneSided) {
       const fan = view[levels.indexOf(hi)]
       headline = `${fan.name}'s favourite`
@@ -497,7 +494,7 @@ export function rankIdeas(input: SuggestInput): Idea[] {
       overdue,
       bothLike,
       oneSided,
-      wanted: wanters.length > 0 || Boolean(wantLevel),
+      wanted: Boolean(wantLevel),
       wantLevel,
       isNew: meal.cooked === 0,
       veggie: traits.veggie,

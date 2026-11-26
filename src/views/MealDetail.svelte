@@ -10,6 +10,7 @@
   import { removePhoto } from '../lib/photos.svelte'
   import { addNote, loadMeals, meals, persona, ratedParts, removeMeal, saveMeal, sortedMeals } from '../lib/meals.svelte'
   import type { Meal } from '../lib/types'
+  import { loadWants } from '../lib/wants.svelte'
   import { app } from '../lib/state.svelte'
 
   let { id }: { id: string } = $props()
@@ -19,7 +20,10 @@
   let note = $state('')
   let sending = $state(false)
 
-  onMount(() => void loadMeals())
+  onMount(() => {
+    void loadMeals()
+    void loadWants() // a variation on the want-to-make list counts as answered
+  })
 
   const order = $derived(sortedMeals(meals.list))
   const index = $derived(order.findIndex((m) => m.id === id))

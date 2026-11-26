@@ -2,6 +2,7 @@
   import RatingControl from './RatingControl.svelte'
   import { hiddenRateables, rate, rateables, ratingFor, setHidden } from '../lib/meals.svelte'
   import type { Meal, RatedAs } from '../lib/types'
+  import { onWantList, unwantVariation, wantVariation } from '../lib/wants.svelte'
 
   let { meal, ratedAs, onrated, onerror, onremove }: {
     meal: Meal
@@ -22,7 +23,7 @@
   let menuFor = $state<string | null | undefined>(undefined) // the row whose options are open
   let showHidden = $state(false)
 
-  async function change(key: string | null, label: string, v: { thumbs: -1 | 1 | null; stars: number | null; want?: boolean }): Promise<void> {
+  async function change(key: string | null, label: string, v: { thumbs: -1 | 1 | null; stars: number | null }): Promise<void> {
     menuFor = undefined
     try {
       await rate(meal.id, key, ratedAs, v)
@@ -32,9 +33,16 @@
     }
   }
 
-  function toggleWant(key: string | null, label: string): void {
-    const wanted = Boolean(ratingFor(meal, key, ratedAs)?.want)
-    void change(key, label, { thumbs: null, stars: null, want: !wanted })
+  // Haven't had it, want to make: a line on the household's want-to-make list (or off it again).
+  async function toggleWant(key: string | null, label: string): Promise<void> {
+    menuFor = undefined
+    try {
+      if (onWantList(meal.id, key)) await unwantVariation(meal.id, key)
+      else await wantVariation(meal, key, label)
+      onrated?.()
+    } catch (e) {
+      onerror?.(e instanceof Error ? e.message : `Could not change the want-to-make list for ${label}`)
+    }
   }
 
   // Never had it: take the variation off the list. The last one left takes the meal with it.
@@ -66,15 +74,18 @@
 
 {#if single}
   {@const v = ratingFor(meal, null, ratedAs)}
+  {@const listed = onWantList(meal.id, null)}
   <div class="single">
-    {#if v?.want}
-      <button type="button" class="want-pill lg" aria-pressed="true" onclick={() => toggleWant(null, meal.name)}>{@render wantIcon()} Want to make <span class="muted">(undo)</span></button>
-    {:else}
-      <RatingControl label={meal.name} value={v ?? blank} onchange={(next) => void change(null, meal.name, next)} />
+    {#if listed && !v}
+      <button type="button" class="want-pill lg" aria-pressed="true" onclick={() => void toggleWant(null, meal.name)}>{@render wantIcon()} On the want-to-make list <span class="muted">(undo)</span></button>
+      <span class="muted small">Had it after all? Rate it:</span>
     {/if}
+    <RatingControl label={meal.name} value={v ?? blank} onchange={(next) => void change(null, meal.name, next)} />
     <div class="single-actions">
-      {#if !v?.want}
-        <button type="button" class="link" onclick={() => toggleWant(null, meal.name)}>{@render wantIcon()} Haven't had it, want to make</button>
+      {#if !listed}
+        <button type="button" class="link" onclick={() => void toggleWant(null, meal.name)}>{@render wantIcon()} Haven't had it, want to make</button>
+      {:else if v}
+        <button type="button" class="link" onclick={() => void toggleWant(null, meal.name)}>{@render wantIcon()} On the want-to-make list: take off</button>
       {/if}
       {#if onremove}
         <button type="button" class="link danger" onclick={() => void neverHad(null, meal.name)}>Never had it: remove</button>
@@ -86,20 +97,19 @@
     {#each rows as row (row.key)}
       {@const r = ratingFor(meal, row.key, ratedAs)}
       {@const v = r ?? blank}
+      {@const listed = onWantList(meal.id, row.key)}
       {@const [first, ...rest] = row.label.split(' · ')}
-      <li class:done={(v.thumbs !== null && v.stars !== null) || r?.want} class:wanted={r?.want}>
+      <li class:done={(v.thumbs !== null && v.stars !== null) || listed} class:wanted={listed && !r}>
         <span class="label" title={row.label}>
-          <span class="first">{first}</span>{#if rest.length}<span class="rest"><span class="visually-hidden"> · </span>{rest.join(' · ')}</span>{/if}
+          <span class="first">{#if listed}<span class="flag" title="On the want-to-make list">{@render wantIcon()}<span class="visually-hidden">On the want-to-make list: </span></span>{/if}{first}</span>{#if rest.length}<span class="rest"><span class="visually-hidden"> · </span>{rest.join(' · ')}</span>{/if}
         </span>
         {#if menuFor === row.key}
           <span class="menu">
-            <button type="button" class="opt" onclick={() => toggleWant(row.key, row.label)}>{@render wantIcon()} {r?.want ? 'Not wanted' : 'Want to make'}</button>
+            <button type="button" class="opt" onclick={() => void toggleWant(row.key, row.label)}>{@render wantIcon()} {listed ? 'Take off list' : 'Want to make'}</button>
             {#if rows.length > 1 || onremove}
               <button type="button" class="opt danger" onclick={() => void neverHad(row.key, row.label)}>{rows.length > 1 ? 'Never had' : 'Remove meal'}</button>
             {/if}
           </span>
-        {:else if r?.want}
-          <button type="button" class="want-pill" aria-pressed="true" aria-label={`${meal.name}, ${row.label}: want to make. Tap to undo`} onclick={() => toggleWant(row.key, row.label)}>{@render wantIcon()} Want to make</button>
         {:else}
           <RatingControl size={size === 'lg' ? 'md' : size} label={`${meal.name}, ${row.label}`} value={v} onchange={(next) => void change(row.key, row.label, next)} />
         {/if}
@@ -107,7 +117,7 @@
           type="button"
           class="more"
           aria-expanded={menuFor === row.key}
-          aria-label={menuFor === row.key ? 'Close' : `More for ${row.label}: want to make, never had`}
+          aria-label={menuFor === row.key ? 'Close' : `More for ${row.label}: ${listed ? 'take off the want-to-make list' : 'want to make'}, never had`}
           onclick={() => (menuFor = menuFor === row.key ? undefined : row.key)}>{menuFor === row.key ? '×' : '⋯'}</button>
       </li>
     {/each}
@@ -243,6 +253,13 @@
     background: var(--honey-soft);
     border-color: #c98a1e;
     color: var(--plum);
+  }
+  .flag {
+    color: #c98a1e;
+    margin-right: 0.25em;
+  }
+  .small {
+    font-size: 0.85rem;
   }
   .want-pill.lg {
     min-height: 48px;

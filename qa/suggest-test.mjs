@@ -33,7 +33,7 @@ const meals = [
   meal('Never suggested', { cooked: 4, lastCooked: '2026-12-01', ratings: [r(5)], neverSuggest: true }),
   meal('Snoozed', { cooked: 4, lastCooked: '2026-12-01', ratings: [r(5)], snoozedUntil: '2027-03-20' }),
   meal('Unrated old staple', { cooked: 7, suggestedTags: ['pasta'] }),
-  meal('Want one', { ratings: [r(null, null, { want: true })] }),
+  meal('Want one', { id: 'want-one' }),
   meal('Big roast', { cooked: 2, lastCooked: '2026-12-20', effort: 3, ratings: [r(5)] }),
   meal('Chloe special', { cooked: 3, lastCooked: '2027-01-01', ratings: [{ optionId: null, ratedAs: 'chloe', thumbs: 1, stars: 5 }, { optionId: null, ratedAs: 'sam', thumbs: 1, stars: 3 }] }),
   meal('Last March', { cooked: 2, lastCooked: '2026-03-12', ratings: [r(3)] }),
@@ -59,7 +59,7 @@ const freezer = [
 ]
 const planned = [{ id: 'p', date: '2027-03-11', slot: 'dinner', kind: 'dish', status: 'planned', dishId: id('Planned already'), optionIds: [], note: null, raw: null, freezerItemId: null, cookNote: null, leftovers: false, frozenPortions: 0, tweakRetry: false, reviewedAt: null, updatedAt: '' }]
 
-const all = suggestAll({ meals, history, freezer, members: [SAM, CHLOE], today: TODAY, planned })
+const all = suggestAll({ meals, history, freezer, members: [SAM, CHLOE], today: TODAY, planned, wants: [{ id: 'l0', text: 'want one', level: 2, dishId: 'want-one', optionIds: [], createdBy: 'sam', createdAt: '', updatedAt: '', done: false }] })
 const lane = (l) => all.filter((s) => s.lane === l).sort((a, b) => b.score - a.score).map((s) => s.title)
 const has = (name) => all.some((s) => s.title.startsWith(name))
 
@@ -97,8 +97,9 @@ ok('want: wanted meal', lane('want').includes('Want one'))
     { id: 'ko', axis: 'Style', name: 'Korean' },
     { id: 'ka', axis: 'Protein', name: 'Kangaroo' },
   ]
-  const dc = meal('Cabbage', { options: opts, cooked: 6, ratings: [r(5, 1, { optionId: 'ch+ka' }), r(null, null, { optionId: 'ka+ko', want: true })] })
-  const w = suggestAll({ meals: [dc], history: { entries: [], importedWeeks: 0 }, freezer: [], members: [SAM, CHLOE], today: TODAY, planned: [] }).find((x) => x.lane === 'want')
+  const dc = meal('Cabbage', { options: opts, cooked: 6, ratings: [r(5, 1, { optionId: 'ch+ka' })] })
+  const line = { id: 'l1', text: 'Cabbage (Korean, Kangaroo)', level: 2, dishId: dc.id, optionIds: ['ka', 'ko'], createdBy: 'sam', createdAt: '', updatedAt: '', done: false }
+  const w = suggestAll({ meals: [dc], history: { entries: [], importedWeeks: 0 }, freezer: [], members: [SAM, CHLOE], today: TODAY, planned: [], wants: [line] }).find((x) => x.lane === 'want')
   eq('want: named as the wanted variation', [w?.title, w?.optionIds], ['Cabbage (Korean, Kangaroo)', ['ka', 'ko']])
 }
 ok('weekend: high effort favourite', lane('weekend').includes('Big roast'))
@@ -137,10 +138,11 @@ eq('balance: veggie, new, repeats', weekBalance([e(veg.id), e(chilli.id, ['v']),
   const pasta = meal('Pasta', { tags: ['pasta'], cooked: 5, lastCooked: ago(50), ratings: [p('sam', 4), p('chloe', 4)] })
   const recent = meal('Had it Monday', { cooked: 9, lastCooked: ago(2), ratings: [p('sam', 5), p('chloe', 5)] })
   const nope = meal('Neither', { cooked: 2, lastCooked: ago(90), ratings: [p('sam', 2), p('chloe', 1)] })
-  const tryIt = meal('Want it', { ratings: [{ optionId: null, ratedAs: 'chloe', thumbs: null, stars: null, want: true }] })
+  const tryIt = meal('Want it')
   const hist = { entries: [both, samOnly, curryA, curryB, pasta].flatMap((m) => [ago(60 + 42), ago(60 + 84), ago(60)].map((date) => ({ dishId: m.id, date }))), importedWeeks: 0 }
   const all = [both, samOnly, curryA, curryB, pasta, recent, nope, tryIt]
-  const run = (planned = []) => rankIdeas({ meals: all, history: hist, freezer: [], members: [SAM, CHLOE], today: TODAY, planned })
+  const tryLine = { id: 'l2', text: 'want it', level: 2, dishId: tryIt.id, optionIds: [], createdBy: 'chloe', createdAt: '', updatedAt: '', done: false }
+  const run = (planned = []) => rankIdeas({ meals: all, history: hist, freezer: [], members: [SAM, CHLOE], today: TODAY, planned, wants: [tryLine] })
   const ideas = run()
   const pos = (name) => ideas.findIndex((i) => i.title === name)
   ok('ideas: both love it beats one of us loving it', pos('Both love') < pos('Sam loves'), ideas.map((i) => i.title).join(', '))
@@ -150,7 +152,7 @@ eq('balance: veggie, new, repeats', weekBalance([e(veg.id), e(chilli.id, ['v']),
   eq('ideas: one-sided is labelled', ideas.find((i) => i.title === 'Sam loves')?.headline, "Sam's favourite")
   ok('ideas: neither of us likes it: left out', pos('Neither') === -1)
   ok('ideas: just had it ranks low', pos('Had it Monday') > pos('Pasta'))
-  eq('ideas: wanting to try it says who', ideas.find((i) => i.title === 'Want it')?.headline, 'Chloe wants to try it')
+  eq('ideas: on the want-to-make list says so', ideas.find((i) => i.title === 'Want it')?.headline, 'On your want-to-make list')
   ok('ideas: spread out (no two curries at the top)', !(ideas[0].type === 'curry' && ideas[1].type === 'curry'), ideas.slice(0, 3).map((i) => i.title).join(', '))
   const withCurry = run([{ ...planned[0], dishId: curryA.id, optionIds: [] }])
   ok('ideas: a curry already planned pushes curries down', withCurry.findIndex((i) => i.title === 'Curry B') > withCurry.findIndex((i) => i.title === 'Pasta'))

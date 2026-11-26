@@ -1,5 +1,5 @@
 import { api } from './api'
-import type { WantLevel, WantLine } from './types'
+import type { Meal, WantLevel, WantLine } from './types'
 
 /** The want-to-make scratch pad, shared by the household. */
 export const wants = $state({
@@ -102,4 +102,34 @@ export async function removeWant(id: string): Promise<void> {
   await api.removeWant(id)
   const i = wants.list.findIndex((x) => x.id === id)
   if (i >= 0) wants.list.splice(i, 1)
+}
+
+/* ------------------------------------------------------------------ */
+/* From the rating rows: "Haven't had it, want to make"                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Open lines that put this variation on the list. `key` is a rating row's:
+ * null for a meal with no options, else option ids joined with '+'. A line
+ * naming some of the row's options counts ("Korean" covers Korean · Beef);
+ * a line for the whole meal counts only on a meal with no options.
+ */
+export function linesFor(dishId: string, key: string | null): WantLine[] {
+  const ids = key ? key.split('+') : []
+  return wants.list.filter(
+    (w) => w.dishId === dishId && !w.done && (key === null ? w.optionIds.length === 0 : w.optionIds.length > 0 && w.optionIds.every((o) => ids.includes(o))),
+  )
+}
+export const onWantList = (dishId: string, key: string | null): boolean => linesFor(dishId, key).length > 0
+
+/** Put a meal or variation on the list (keen), named as it reads: "Dirty cabbage (Korean, Beef)". */
+export async function wantVariation(meal: Meal, key: string | null, label: string): Promise<void> {
+  const text = key === null ? meal.name : `${meal.name} (${label.split(' · ').join(', ')})`
+  const { want } = await api.addWant(text, 2, { dishId: meal.id, optionIds: key ? key.split('+') : [] })
+  put(want)
+}
+
+/** Take a variation off the list: every line that put it there. */
+export async function unwantVariation(dishId: string, key: string | null): Promise<void> {
+  for (const w of linesFor(dishId, key)) await removeWant(w.id)
 }

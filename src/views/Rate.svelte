@@ -4,6 +4,7 @@
   import RateRows from '../components/RateRows.svelte'
   import { isRated, isStarted, loadMeals, meals, milestone, nextUnrated, persona, ratedCount, ratedParts, removeMeal, restoreMeal, saveMeal } from '../lib/meals.svelte'
   import type { Meal } from '../lib/types'
+  import { loadWants } from '../lib/wants.svelte'
   import { app } from '../lib/state.svelte'
 
   let skipped = $state(new Set<string>())
@@ -17,7 +18,10 @@
   let removed = $state<Meal | null>(null) // for undo
   let removedTimer = 0
 
-  onMount(() => void loadMeals())
+  onMount(() => {
+    void loadMeals()
+    void loadWants() // a variation on the want-to-make list counts as answered
+  })
 
   const total = $derived(meals.list.length)
   const done = $derived(ratedCount(meals.list, persona.value))
