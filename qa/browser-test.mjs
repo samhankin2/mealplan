@@ -556,6 +556,20 @@ try {
   await addWant('miso eggplant from the ottolenghi book')
   ok('want pad: words that are no meal stay a note', await until(`[...document.querySelectorAll('.pad .want:not(.new)')].length === 2 && /Add as new meal/.test([...document.querySelectorAll('.pad .want:not(.new)')][1].innerText)`), await text('.pad'))
   await shot('13b-want-pad.png')
+  // Plan it: straight onto this week (or next, if this week is full)
+  const planFrom = async (i) => {
+    await evaluate(`[...document.querySelectorAll('.pad .want:not(.new)')][${i}].querySelector('.plan-it').click(); return true`)
+    await until(`[...document.querySelectorAll('.pad .want:not(.new)')][${i}].querySelector('.nights .night')`)
+    const day = await evaluate(`return [...document.querySelectorAll('.pad .want:not(.new)')][${i}].querySelector('.nights .night').innerText`)
+    await evaluate(`[...document.querySelectorAll('.pad .want:not(.new)')][${i}].querySelector('.nights .night').click(); return true`)
+    return day
+  }
+  const allNights = async () => { const out = []; for (const w of [0, 7, 14]) out.push(...(await http('GET', `/api/planner/week?start=${localDay(w)}`, sam.token)).week.entries); return out }
+  const day1 = await planFrom(0)
+  ok('want: Plan it puts the meal on a free night', await until(`/On ${day1}/.test([...document.querySelectorAll('.pad .want:not(.new)')][0].querySelector('.done')?.innerText ?? '')`), await evaluate(`return [...document.querySelectorAll('.pad .want:not(.new)')][0].innerText`))
+  ok('want: planned with the meal and the words', (await allNights()).some((e) => e.dishId && /at the pub/.test(e.raw ?? '')))
+  await planFrom(1)
+  ok('want: words with no meal go on as a note', await until(`Boolean([...document.querySelectorAll('.pad .want:not(.new)')][1].querySelector('.done'))`) && (await allNights()).some((e) => !e.dishId && /miso eggplant/.test(e.raw ?? '')))
   ok('phone: no horizontal overflow with the want pad', (await overflow()) <= 0, String(await overflow()))
   // Emptying a line removes it; Remove does too
   const second = `[...document.querySelectorAll('.pad .want:not(.new) textarea')][1]`

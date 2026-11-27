@@ -6,6 +6,7 @@
    * words are the want. Cooking the meal ticks the line off.
    */
   import { api } from '../lib/api'
+  import PlanOnto from './PlanOnto.svelte'
   import { withOptions } from '../lib/format'
   import { loadMeals, meals } from '../lib/meals.svelte'
   import { app } from '../lib/state.svelte'
@@ -170,6 +171,7 @@
             <button type="button" class="link quiet" onclick={() => void addNew(w)}>Add as new meal</button>
           {/if}
           <button type="button" class="link quiet" onclick={() => void remove(w)}>Remove</button>
+          <PlanOnto dishId={w.dishId} optionIds={w.optionIds} words={w.text} label={matched || w.text} />
           {#if who && !who.me}<span class="who muted">{who.name}'s</span>{/if}
         </p>
       </li>
