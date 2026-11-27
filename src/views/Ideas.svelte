@@ -11,7 +11,6 @@
   import { freezer, loadFreezer } from '../lib/review.svelte'
   import { app } from '../lib/state.svelte'
   import { rankIdeas, type Idea } from '../lib/suggest'
-  import WantPad from '../components/WantPad.svelte'
   import { loadWants, wants } from '../lib/wants.svelte'
   import { history, loadHistory, notNow } from '../lib/suggestions.svelte'
   import type { Day } from '../lib/types'
@@ -125,8 +124,6 @@
       Every night this week is planned. <a href={`#/ideas/${addDays(start, 7)}`}>Next week</a>
     {/if}
   </p>
-
-  <WantPad />
 
   <div class="filters" role="group" aria-label="Show">
     {#each FILTERS as f (f.id)}

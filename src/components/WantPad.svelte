@@ -130,7 +130,8 @@
 {/snippet}
 
 <section class="pad" aria-labelledby="want-title">
-  <h2 id="want-title">Want to make</h2>
+  <h1 id="want-title">Want to make</h1>
+  <p class="muted intro">Meals you want to try, written however you like. They lift those meals in Ideas.</p>
 
   {#if wants.error}<p class="error" role="alert">{wants.error}</p>{/if}
 
@@ -200,9 +201,11 @@
   .pad {
     margin: 0 0 1.5rem;
   }
-  h2 {
-    font-size: var(--s1);
-    margin: 0 0 0.35rem;
+  h1 {
+    margin-bottom: 0.25rem;
+  }
+  .intro {
+    margin: 0 0 1rem;
   }
   .lines {
     list-style: none;

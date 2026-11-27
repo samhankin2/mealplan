@@ -7,6 +7,7 @@ import type { Day, Household, User } from './types'
 export type Route =
   | { name: 'week'; start: Day }
   | { name: 'ideas'; start: Day }
+  | { name: 'want' }
   | { name: 'meals' }
   | { name: 'rate' }
   | { name: 'review' }
@@ -29,6 +30,7 @@ export const app = $state({
 function parseHash(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean)
   if (parts[0] === 'settings') return { name: 'settings' }
+  if (parts[0] === 'want') return { name: 'want' }
   if (parts[0] === 'ideas') return { name: 'ideas', start: parts[1] && isDay(parts[1]) ? parts[1] : today() }
   if (parts[0] === 'meals' && parts[1]) return { name: 'meal', id: decodeURIComponent(parts[1]) }
   if (parts[0] === 'meals') return { name: 'meals' }
