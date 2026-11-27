@@ -117,23 +117,25 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true })
   await send('Page.navigate', { url: `${BASE}/` })
 
+  const plusDays = (offset) => { const t = new Date(); t.setDate(t.getDate() + offset); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}` }
+  const planMonday = (() => { const t = new Date(); t.setDate(t.getDate() + 7); t.setDate(t.getDate() - ((t.getDay() + 6) % 7)); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}` })()
+
   /* ---------- Sign in through the form ---------- */
   ok('login: the sign-in form shows', await until(`document.querySelector('#email')`))
   await shot('1-login.png')
   await type('#email', 'sam@example.com')
   await type('#password', 'cook-dinner-1')
   await click('form button[type="submit"]')
-  ok('week: signed in lands on This week', await until(`/This week/.test(document.querySelector('#week-title')?.innerText ?? '')`))
-  ok('week: seven days, Monday first', await evaluate(`
-    const days = [...document.querySelectorAll('.day .weekday')].map((e) => e.innerText)
-    return days.length === 7 && days[0] === 'Mon' && days[6] === 'Sun'`))
+  ok('plan: signed in lands on the plan', await until(`/The plan/.test(document.querySelector('#week-title')?.innerText ?? '')`))
+  ok('plan: rolls from two nights back, no fixed week', await evaluate(`return document.querySelectorAll('.days .day').length === 16 && document.querySelector('.days li').dataset.date === ${JSON.stringify(plusDays(-2))}`))
+  ok('plan: today is marked', await evaluate(`return document.querySelectorAll('.days li')[2].querySelector('.num').innerText === 'Today'`))
   ok('week: solo note offers to link a partner', /Link your partner/.test(await text('.note')))
   ok('phone: no horizontal overflow on Week', (await overflow()) <= 0, String(await overflow()))
   await shot('2-week-solo.png')
 
-  await click('a[aria-label="Next week"]')
-  ok('week: next week drops "This week"', await until(`!/This week/.test(document.querySelector('#week-title')?.innerText ?? 'This week')`))
-  ok('week: the URL carries the Monday', await evaluate(`return /^#\\/week\\/\\d{4}-\\d{2}-\\d{2}$/.test(location.hash)`))
+  await click('a[aria-label="A week later"]')
+  ok('plan: a week later, with a way back to today', await until(`/Back to today/.test(document.querySelector('.range')?.innerText ?? '')`))
+  ok('plan: the URL carries where it starts', await evaluate(`return location.hash === '#/week/' + ${JSON.stringify(plusDays(5))}`))
 
   /* ---------- Link Chloe in Settings ---------- */
   await evaluate(`location.hash = '#/settings'; return true`)
@@ -152,7 +154,7 @@ try {
   const chloeHousehold = (await http('GET', '/api/planner/household', chloe.token)).household
   ok('household: one shared household', samHousehold?.id && samHousehold.id === chloeHousehold?.id)
   await signInAs(chloe.token, '#/week')
-  ok('week: Chloe signed in via the shared token', await until(`/This week/.test(document.querySelector('#week-title')?.innerText ?? '')`))
+  ok('week: Chloe signed in via the shared token', await until(`/The plan/.test(document.querySelector('#week-title')?.innerText ?? '')`))
   ok('week: no solo note once linked', !(await evaluate(`return Boolean(document.querySelector('.note'))`)))
   await shot('4-week-chloe.png')
 
@@ -296,10 +298,9 @@ try {
     if (!el) throw new Error('no ' + ${JSON.stringify(`${selector} ${label}`)})
     el.click(); return true`)
   const dayText = (i) => evaluate(`return ((r) => r ? r.innerText + ' ' + (r.querySelector('input')?.value || r.querySelector('input')?.placeholder || '') : '')(document.querySelectorAll('.days .day')[${i}]) ?? ''`)
-  // Next week, so it's never in the past and starts empty.
-  await evaluate(`location.hash = '#/week'; return true`)
-  await until(`document.querySelectorAll('.days .day').length === 7`)
-  await click('a[aria-label="Next week"]')
+  // From a Monday a week or so ahead, so it's never in the past and starts empty.
+  await evaluate(`location.hash = '#/week/${planMonday}'; return true`)
+  await until(`document.querySelector('.days li')?.dataset.date === ${JSON.stringify(planMonday)}`)
   ok('week: empty nights invite planning', await until(`/Plan dinner/.test(((r) => r ? r.innerText + ' ' + (r.querySelector('input')?.value || r.querySelector('input')?.placeholder || '') : '')(document.querySelectorAll('.days .day')[0]) ?? '')`))
   await evaluate(`document.querySelectorAll('.days .line')[0].focus(); return true`)
   ok('line: the night itself is the input', await until(`document.activeElement === document.querySelectorAll('.days .line')[0]`))
@@ -408,22 +409,17 @@ try {
   ok('move to: swapped back', await until(`/Dahl/i.test(((r) => r ? r.innerText + ' ' + (r.querySelector('input')?.value || r.querySelector('input')?.placeholder || '') : '')(document.querySelectorAll('.days .day')[2]) ?? '') && /Risotto/i.test(((r) => r ? r.innerText + ' ' + (r.querySelector('input')?.value || r.querySelector('input')?.placeholder || '') : '')(document.querySelectorAll('.days .day')[3]) ?? '')`), `${await dayText(2)} | ${await dayText(3)}`)
   ok('phone: no horizontal overflow after dragging', (await overflow()) <= 0, String(await overflow()))
 
-  // Copy into the following week
-  await click('a[aria-label="Next week"]')
-  await until(`/Plan dinner/.test(((r) => r ? r.innerText + ' ' + (r.querySelector('input')?.value || r.querySelector('input')?.placeholder || '') : '')(document.querySelectorAll('.days .day')[0]) ?? '')`)
-  await clickText('.balance .link', 'Copy last week')
-  ok('copy: five nights copied', await until(`/Copied 5 nights/.test(document.querySelector('.notice')?.innerText ?? '')`), await text('.notice'))
-  ok('copy: same meals land on the same days', /Fried rice/i.test(await dayText(0)) && /Out/i.test(await dayText(1)))
-
-  // Week start setting
-  await evaluate(`location.hash = '#/settings'; return true`)
-  await until(`document.querySelector('#week-start')`)
-  await evaluate(`const s = document.querySelector('#week-start'); s.value = '5'; s.dispatchEvent(new Event('change', { bubbles: true })); return true`)
-  await until(`document.querySelector('#week-start')?.value === '5'`)
-  await sleep(400)
+  // Copy: the last seven nights again onto the next seven (empty nights only)
+  await http('DELETE', `/api/planner/slots/${plusDays(0)}`, sam.token)
+  await http('PUT', `/api/planner/slots/${plusDays(-7)}`, sam.token, { kind: 'out' })
   await evaluate(`location.hash = '#/week'; return true`)
-  ok('week start: Saturday first', await until(`/^Sat/.test(document.querySelectorAll('.days .weekday')[0]?.innerText ?? '')`), await evaluate(`return document.querySelectorAll('.days .weekday')[0]?.innerText`))
-  await http('PUT', '/api/planner/household', sam.token, { weekStartDay: 0 })
+  await until(`document.querySelectorAll('.days .day').length === 16`)
+  await clickText('.balance .link', 'Copy last week')
+  ok('copy: the last seven nights copied', await until(`/Copied \\d+ nights? from the last seven/.test(document.querySelector('.notice')?.innerText ?? '')`), await text('.notice'))
+  ok('copy: a week ago lands on today', await until(`document.querySelectorAll('.days li')[2].classList.contains('quiet')`), await dayText(2))
+  ok('settings: no week start any more', !(await evaluate(`return Boolean(document.querySelector('.range .link'))`)))
+  await http('DELETE', `/api/planner/slots/${plusDays(0)}`, sam.token)
+  await http('DELETE', `/api/planner/slots/${plusDays(-7)}`, sam.token)
 
   /* ---------- Review last week ---------- */
   const localDay = (offset) => {
@@ -486,7 +482,7 @@ try {
   ok('freezer: minus one', await until(`document.querySelector('.items strong')?.innerText === '1'`))
   await shot('12-freezer.png')
   await evaluate(`location.hash = '#/week/${localDay(14)}'; return true`)
-  await until(`document.querySelectorAll('.days .day').length === 7`)
+  await until(`document.querySelectorAll('.days .day').length === 16`)
   await evaluate(`document.querySelectorAll('.days .date')[6].click(); return true`)
   ok('night: freezer stock offered', await until(`[...document.querySelectorAll('.sheet .freezer button')].some((b) => b.innerText.includes('Fried rice (Prawn)'))`))
   await evaluate(`[...document.querySelectorAll('.sheet .freezer button')].find((b) => b.innerText.includes('Fried rice (Prawn)')).click(); return true`)
@@ -500,8 +496,8 @@ try {
   await http('PUT', '/api/planner/ratings', sam.token, { dishId: risotto.id, optionId: risotto.options[0].id, ratedAs: 'both', thumbs: 1, stars: 5 })
   await evaluate(`location.hash = '#/week/${localDay(7)}'; return true`)
   await signInAs(sam.token, `#/week/${localDay(28)}`) // a week with nothing planned yet
-  ok('ideas: the week only links to them', await until(`/7 free nights: see ideas/.test(document.querySelector('.ideas-link')?.innerText ?? '')`) && !(await evaluate(`return Boolean(document.querySelector('.ideas'))`)))
-  await click('.ideas-link')
+  ok('ideas: the week only links to them', await until(`/free nights? in the next seven: see ideas/.test(document.querySelector('.ideas-link')?.innerText ?? '')`) && !(await evaluate(`return Boolean(document.querySelector('.ideas'))`)))
+  await evaluate(`location.hash = '#/ideas/${localDay(28)}'; return true`)
   ok('ideas tab: opens for that week', await until(`document.querySelector('#ideas-title') && /Free nights/.test(document.querySelector('.free')?.innerText ?? '')`))
   ok('ideas tab: no want-to-make list cluttering it', !(await evaluate(`return Boolean(document.querySelector('.pad'))`)))
   await click('a[href="#/want"]')
@@ -631,8 +627,9 @@ try {
   // The week planned earlier (next week): Fried rice \(Prawn\), out, Dahl, Risotto, Spicy surprise bake.
   const planWeek = (await http('GET', '/api/planner/household', sam.token)).household && (() => { const t = new Date(); t.setDate(t.getDate() + 7); const dow = (t.getDay() + 6) % 7; t.setDate(t.getDate() - dow); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}` })()
   await evaluate(`location.hash = '#/week/${planWeek}'; return true`)
-  ok('shop: linked from the week', await until(`document.querySelector('.shop-link')`))
-  await click('.shop-link')
+  ok('shop: linked from the week', await until(`document.querySelector('.shop-link')?.getAttribute('href') === '#/shop'`))
+  await evaluate(`location.hash = '#/shop/${planWeek}'; return true`)
+  ok('shop: says which nights it shops for', await until(`/Shopping for/.test(document.querySelector('.range')?.innerText ?? '') && /7 nights/.test(document.querySelector('.range')?.innerText ?? '')`), await text('.range'))
   ok('shop: builder starts at the first meal night', await until(`/Fried rice/i.test(document.querySelector('#step-title')?.innerText ?? '')`), await text('#step-title'))
   ok('shop: out night skipped (4 meal nights + extras)', /1 of 5/.test(await text('.progress')), await text('.progress'))
   const addTyped = async (value) => {
@@ -678,6 +675,7 @@ try {
 
   // The following week has the same meals (copied): the usual is offered
   const nextWeek = (() => { const [y, m, dd] = planWeek.split('-').map(Number); const t = new Date(y, m - 1, dd + 7); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}` })()
+  await http('POST', '/api/planner/week/copy', sam.token, { from: planWeek, to: nextWeek })
   await evaluate(`location.hash = '#/shop/${nextWeek}'; return true`)
   ok('usual: offered for a meal made before', await until(`/The usual/.test(document.querySelector('.usual')?.innerText ?? '') && /onions/i.test(document.querySelector('.usual')?.innerText ?? '')`), await text('.step'))
   await evaluate(`[...document.querySelectorAll('.usual .chip')].find((c) => /coriander/i.test(c.innerText)).click(); return true`)
@@ -685,22 +683,17 @@ try {
   ok('usual: unticked ones stay off', await until(`/onions/i.test(document.querySelector('.added')?.innerText ?? '')`) && !/coriander/i.test(await text('.added')))
   ok('usual: section remembered (coriander still Market next time)', (await http('POST', '/api/planner/shopping/items', sam.token, { week: nextWeek, name: 'Coriander' })).item.section === 'market')
 
-  /* ---------- A week that starts on another day ---------- */
-  await evaluate(`location.hash = '#/week/${localDay(21)}'; return true`)
-  await until(`document.querySelectorAll('.days .day').length === 7`)
-  const firstDay = await evaluate(`return document.querySelector('.days li').dataset.date`)
-  await clickText('.range .link', 'change')
-  ok('week start: day choices offered', await until(`document.querySelectorAll('.start-day').length === 6`))
-  await evaluate(`document.querySelectorAll('.start-day')[4].click(); return true`) // two days later
-  const later = (() => { const [y, m, d] = firstDay.split('-').map(Number); const t = new Date(y, m - 1, d + 2, 12); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}` })()
-  ok('week start: the week now starts two days later', await until(`document.querySelector('.days li')?.dataset.date === ${JSON.stringify(later)} && document.querySelectorAll('.days .day').length === 7`), await evaluate(`return document.querySelector('.days li')?.dataset.date`))
-  ok('week start: saved for both phones', ((await http('GET', '/api/planner/household', sam.token)).household.weekStarts ?? []).includes(later))
-  await click('a[aria-label="Previous week"]')
-  ok('week start: the week before is short (2 nights)', await until(`document.querySelectorAll('.days .day').length === 2 && document.querySelector('.days li')?.dataset.date === ${JSON.stringify(firstDay)}`), String(await evaluate(`return document.querySelectorAll('.days .day').length`)))
-  await click('a[aria-label="Next week"]')
-  await click('a[aria-label="Next week"]')
-  ok('week start: following weeks carry on from the new day', await until(`document.querySelector('.days li')?.dataset.date === ${JSON.stringify(later)} ? false : new Date(document.querySelector('.days li').dataset.date + 'T12:00').getDay() === new Date(${JSON.stringify(later)} + 'T12:00').getDay()`))
-  await shot('15-week-start.png')
+  /* ---------- Shopping for any run of nights ---------- */
+  await evaluate(`location.hash = '#/shop/${localDay(30)}'; return true`)
+  ok('shop range: seven nights to start', await until(`/7 nights/.test(document.querySelector('.range')?.innerText ?? '')`))
+  await clickText('.range .link', 'One more night')
+  ok('shop range: one more night', await until(`/8 nights/.test(document.querySelector('.range')?.innerText ?? '')`), await text('.range'))
+  ok('shop range: saved for both phones', ((await http('GET', '/api/planner/shopping/lists', chloe.token)).lists ?? []).some((l) => l.from === localDay(30) && l.to === localDay(37)))
+  await clickText('.range .link', 'Next list')
+  ok('shop range: the next list starts the night after', await until(`location.hash === '#/shop/' + ${JSON.stringify(localDay(38))}`))
+  await shot('15-shop-range.png')
+  await clickText('.range .link', 'Start a night later')
+  ok('shop range: an empty list can start a night later', await until(`location.hash === '#/shop/' + ${JSON.stringify(localDay(39))}`))
 
   /* ---------- Sign out ---------- */
   await evaluate(`location.hash = '#/settings'; return true`)

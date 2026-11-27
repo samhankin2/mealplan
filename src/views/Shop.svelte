@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { shortDate, weekLabel, weekStart, weekdayIndex, weekdayName } from '../lib/dates'
+  import { addDays, daysBetween, rangeLabel, shortDate, today, weekdayIndex, weekdayName } from '../lib/dates'
+  import { api } from '../lib/api'
   import { loadMeals, meals } from '../lib/meals.svelte'
   import {
     SECTION_NAMES,
@@ -16,12 +17,29 @@
     tick,
     watchShop,
   } from '../lib/shop.svelte'
-  import { app } from '../lib/state.svelte'
   import type { Day, Section, ShoppingItem } from '../lib/types'
 
   let { week: requested }: { week: Day } = $props()
 
-  const week = $derived(weekStart(requested, app.household?.weekStartDay ?? 0))
+  // No date asked for: the list we're on (covering today), else the next one, else a new one from today.
+  let resolved = $state<Day>('')
+  $effect(() => {
+    const asked = requested
+    if (asked) {
+      resolved = asked
+      return
+    }
+    void api
+      .shoppingLists()
+      .then(({ lists }) => {
+        const t = today()
+        const current = lists.find((l) => l.from <= t && t <= l.to)
+        const upcoming = lists.filter((l) => l.from > t).at(-1)
+        resolved = current?.from ?? upcoming?.from ?? t
+      })
+      .catch(() => (resolved = today()))
+  })
+  const week = $derived(resolved)
   let mode = $state<'build' | 'list'>('build')
   let step = $state(0)
   let typed = $state('')
@@ -32,6 +50,7 @@
 
   onMount(() => void loadMeals())
   $effect(() => {
+    if (!week) return
     void loadShop(week)
     return watchShop(week)
   })
@@ -47,6 +66,17 @@
   })
 
   const data = $derived(shop.data && shop.data.week === week ? shop.data : null)
+
+  /** Which nights this list shops for: a night fewer or one more. */
+  async function setRange(to: Day): Promise<void> {
+    error = ''
+    try {
+      await api.setShoppingRange(week, to)
+      await loadShop(week)
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e)
+    }
+  }
   const nights = $derived(data?.nights ?? [])
   const steps = $derived(nights.length + 1) // every meal night, then extras
   const night = $derived(step < nights.length ? nights[step] : null)
@@ -113,7 +143,22 @@
 <div class="head">
   <h1>Shopping</h1>
 </div>
-<p class="muted sub">{weekLabel(week)}</p>
+{#if data}
+  {@const count = daysBetween(week, data.to) + 1}
+  <div class="range">
+    <p class="sub">Shopping for <strong>{rangeLabel(week, data.to)}</strong> <span class="muted">({count} night{count === 1 ? '' : 's'})</span></p>
+    <div class="range-acts">
+      <button type="button" class="link" disabled={count <= 1} onclick={() => void setRange(addDays(data.to, -1))}>One night fewer</button>
+      <button type="button" class="link" disabled={count >= 21} onclick={() => void setRange(addDays(data.to, 1))}>One more night</button>
+      <a class="link" href={`#/shop/${addDays(data.to, 1)}`}>Next list</a>
+      {#if data.items.length === 0}
+        <!-- Nothing on it yet: it can still start on another night. -->
+        <a class="link" href={`#/shop/${addDays(week, -1)}`}>Start a night earlier</a>
+        <a class="link" href={`#/shop/${addDays(week, 1)}`}>Start a night later</a>
+      {/if}
+    </div>
+  </div>
+{/if}
 
 <div class="tabs" role="tablist" aria-label="Shopping">
   <button type="button" role="tab" aria-selected={mode === 'build'} onclick={() => (mode = 'build')}>Build</button>
@@ -187,7 +232,7 @@
           {/each}
         </ul>
       {/if}
-      {#if nights.length === 0}<p class="muted small">No meal nights planned this week, so it's straight to extras.</p>{/if}
+      {#if nights.length === 0}<p class="muted small">No meal nights planned for these nights, so it's straight to extras.</p>{/if}
     </section>
   {/if}
   {#if error}<p class="error" role="alert">{error}</p>{/if}
@@ -477,5 +522,31 @@
     color: var(--text-muted);
     font-weight: 700;
     cursor: pointer;
+  }
+  .range {
+    margin: 0 0 0.9rem;
+  }
+  .range .sub {
+    margin: 0 0 0.25rem;
+  }
+  .range-acts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 1rem;
+    font-size: var(--s-1);
+  }
+  .range-acts .link {
+    border: 0;
+    background: none;
+    padding: 0;
+    color: var(--plum);
+    font: inherit;
+    font-weight: 650;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .range-acts .link:disabled {
+    color: var(--rule-strong);
+    cursor: default;
   }
 </style>

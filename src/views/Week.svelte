@@ -5,40 +5,21 @@
   import { api } from '../lib/api'
   import { withOptions } from '../lib/format'
   import { weekBalance } from '../lib/suggest'
-  import { addDays, previousWeek, shortDate, today, weekDays, weekdayIndex, weekdayName, weekLabel, weekStart } from '../lib/dates'
-  import { weeks } from '../lib/weeks.svelte'
+  import { addDays, rangeLabel, shortDate, today, weekDays, weekdayIndex, weekdayName } from '../lib/dates'
   import { loadMeals, meals } from '../lib/meals.svelte'
   import { copyWeek, describe, entryFor, loadWeek, moveNight, plan, putNight } from '../lib/plan.svelte'
   import { freezer, loadFreezer, loadReview, review } from '../lib/review.svelte'
-  import { app, setHousehold } from '../lib/state.svelte'
+  import { app } from '../lib/state.svelte'
   import type { Day, PlanEntry } from '../lib/types'
 
   let { start: requested }: { start: Day } = $props()
 
-  const startDay = $derived(app.household?.weekStartDay ?? 0)
-  const start = $derived(weekStart(requested, startDay))
-  const days = $derived(weekDays(start))
-  const isThisWeek = $derived(start === weekStart(today(), startDay))
-
-  // "This week starts on Thursday": any day from three before to three after.
-  let choosingStart = $state(false)
-  const startChoices = $derived([-3, -2, -1, 1, 2, 3].map((n) => addDays(start, n)))
-  async function startOn(date: Day): Promise<void> {
-    busy = true
-    notice = ''
-    try {
-      const { household } = await api.setWeekStart(date, weeks.starts.includes(start) ? start : undefined)
-      setHousehold(household)
-      choosingStart = false
-      location.hash = `#/week/${date}`
-      notice = `This week now starts on ${weekdayName(date)}. Following weeks carry on from there.`
-    } catch (e) {
-      notice = e instanceof Error ? e.message : String(e)
-    } finally {
-      busy = false
-    }
-  }
+  // The rolling plan: a run of nights from a couple back, no fixed weeks. Arrows move it a week.
+  const NIGHTS = 16
+  const start = $derived(requested)
+  const days = $derived(weekDays(start, NIGHTS))
   const todayDay = today()
+  const showsToday = $derived(days.includes(todayDay))
   const others = $derived(app.household?.members.filter((m) => !m.me) ?? [])
   const entries = $derived(plan.weeks[start] ?? [])
   const planned = $derived(entries.length)
@@ -50,7 +31,7 @@
 
   $effect(() => {
     void loadMeals()
-    void loadWeek(start)
+    void loadWeek(start, NIGHTS)
   })
   $effect(() => {
     void loadReview()
@@ -58,17 +39,21 @@
   })
   const frozenPortions = $derived(freezer.items.reduce((n, f) => n + f.portions, 0))
 
-  // Suggestions for this week's free nights (today onwards).
-  const freeNights = $derived(days.filter((d) => d >= todayDay && !entries.some((e) => e.date === d)))
-  const balance = $derived(weekBalance(entries, meals.list))
+  // Free nights in the coming seven (what Ideas offers to fill).
+  const nextSeven = $derived(weekDays(todayDay))
+  const freeNights = $derived(nextSeven.filter((d) => !entries.some((e) => e.date === d)))
+  // The balance of the coming seven nights.
+  const balance = $derived(weekBalance(entries.filter((e) => nextSeven.includes(e.date)), meals.list))
   const repeatsText = $derived(balance.repeats.length ? `${balance.repeats.join(' and ')} twice` : 'no repeats')
 
   async function copyLast(): Promise<void> {
     busy = true
     notice = ''
     try {
-      const copied = await copyWeek(previousWeek(start, startDay), start)
-      notice = copied ? `Copied ${copied} night${copied === 1 ? '' : 's'} from last week.` : 'Nothing to copy: last week was empty, or every night here is planned.'
+      // The last seven nights again, onto the next seven (empty nights only).
+      const copied = await copyWeek(addDays(todayDay, -7), todayDay)
+      await loadWeek(start, NIGHTS)
+      notice = copied ? `Copied ${copied} night${copied === 1 ? '' : 's'} from the last seven.` : 'Nothing to copy: the last seven nights were empty, or the next seven are planned.'
     } catch (e) {
       notice = e instanceof Error ? e.message : String(e)
     } finally {
@@ -307,34 +292,23 @@
 <section aria-labelledby="week-title">
   <header class="week-head">
     <div>
-      <h1 id="week-title">{isThisWeek ? 'This week' : weekLabel(start)}</h1>
+      <h1 id="week-title">{showsToday ? 'The plan' : rangeLabel(days[0], days.at(-1) ?? start)}</h1>
       <p class="muted range">
-        {#if isThisWeek}{weekLabel(start)}. {/if}Starts {weekdayName(start)},
-        <button type="button" class="link" aria-expanded={choosingStart} onclick={() => (choosingStart = !choosingStart)}>change</button>
+        {#if showsToday}{rangeLabel(days[0], days.at(-1) ?? start)}{:else}<a href="#/week">Back to today</a>{/if}
       </p>
     </div>
-    <nav class="pager" aria-label="Weeks">
-      <a class="btn btn-icon" href={`#/week/${previousWeek(start, startDay)}`} aria-label="Previous week"><Chevron dir="left" /></a>
-      <a class="btn btn-icon" href={`#/week/${addDays(start, 7)}`} aria-label="Next week"><Chevron /></a>
+    <nav class="pager" aria-label="Move the plan">
+      <a class="btn btn-icon" href={`#/week/${addDays(start, -7)}`} aria-label="A week earlier"><Chevron dir="left" /></a>
+      <a class="btn btn-icon" href={`#/week/${addDays(start, 7)}`} aria-label="A week later"><Chevron /></a>
     </nav>
   </header>
-
-  {#if choosingStart}
-    <div class="starts" role="group" aria-label="Start this week on">
-      {#each startChoices as d (d)}
-        <button type="button" class={`start-day day-${weekdayIndex(d)}`} disabled={busy} onclick={() => void startOn(d)}>
-          <span class="weekday">{weekdayName(d)}</span><span class="num">{shortDate(d)}</span>
-        </button>
-      {/each}
-    </div>
-  {/if}
 
   {#if others.length === 0}
     <p class="note">Planning just for you for now. <a href="#/settings">Link your partner</a> to share the plan.</p>
   {/if}
   {#if plan.error}<p class="error" role="alert">{plan.error}</p>{/if}
 
-  <ol class="days" class:dragging={Boolean(drag)} aria-label={`${planned} of 7 nights planned`}>
+  <ol class="days" class:dragging={Boolean(drag)} aria-label={`The plan, ${planned} nights planned`}>
     {#each days as day (day)}
       {@const entry = entryFor(start, day)}
       {@const detail = lineDetail(entry)}
@@ -342,6 +316,7 @@
         class={`day day-${weekdayIndex(day)}`}
         data-date={day}
         class:today={day === todayDay}
+        class:past={day < todayDay}
         class:filled={Boolean(entry)}
         class:quiet={entry && entry.kind !== 'dish' && entry.kind !== 'freezer'}
         class:source={drag?.from === day}
@@ -357,7 +332,7 @@
           onpointerleave={cancelHold}
           oncontextmenu={(e) => entry && e.preventDefault()}>
           <span class="weekday">{weekdayName(day)}</span>
-          <span class="num">{shortDate(day)}</span>
+          <span class="num">{day === todayDay ? 'Today' : shortDate(day)}</span>
         </button>
         <span class="what">
           <input
@@ -413,11 +388,11 @@
   </p>
 
   {#if freeNights.length}
-    <a class="ideas-link" href={`#/ideas/${start}`}>{freeNights.length} free night{freeNights.length === 1 ? '' : 's'}: see ideas</a>
+    <a class="ideas-link" href="#/ideas">{freeNights.length} free night{freeNights.length === 1 ? '' : 's'} in the next seven: see ideas</a>
   {/if}
 
   <div class="more">
-    <a class="btn shop-link" href={`#/shop/${start}`}>Shopping list</a>
+    <a class="btn shop-link" href="#/shop">Shopping list</a>
     <a class="freezer-link" href="#/freezer">Freezer{frozenPortions ? `: ${frozenPortions} portion${frozenPortions === 1 ? '' : 's'}` : ''}</a>
     {#if review.pending > 0}
       <a class="review-link" href="#/review">Review last week ({review.pending})</a>
@@ -440,7 +415,7 @@
   <NightSheet {start} date={open} entry={entryFor(start, open)} onclose={() => (open = null)} />
 {/if}
 {#if typing}
-  <TypeWeekSheet {start} onclose={() => (typing = false)} />
+  <TypeWeekSheet start={start > todayDay ? start : todayDay} onclose={() => ((typing = false), void loadWeek(start, NIGHTS))} />
 {/if}
 
 <style>
@@ -451,28 +426,13 @@
     gap: 1rem;
     margin-bottom: 0.75rem;
   }
-  .starts {
-    display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 0.3rem;
-    margin: -0.25rem 0 0.75rem;
+  /* Nights gone by: still there to see and move, quieter. */
+  .past .line,
+  .past .weekday {
+    opacity: 0.6;
   }
-  .start-day {
-    display: grid;
-    justify-items: center;
-    gap: 0.1rem;
-    padding: 0.4rem 0;
-    border-radius: var(--r-row);
-    border: 1.5px solid var(--rule-strong);
-    border-top: 4px solid var(--day);
-    background: var(--plate);
-    color: var(--plum);
-    font: inherit;
-    cursor: pointer;
-  }
-  .start-day .weekday {
-    font-size: var(--s0);
-    color: var(--plum);
+  .today .num {
+    font-weight: 750;
   }
   .range {
     margin: 0.2rem 0 0;

@@ -5,7 +5,7 @@
    * like typing it on the week, and the meal is found behind.
    */
   import { api } from '../lib/api'
-  import { addDays, today, weekDays, weekdayIndex, weekdayName, weekStart } from '../lib/dates'
+  import { addDays, shortDate, today, weekDays, weekdayIndex, weekdayName, weekStart } from '../lib/dates'
   import { loadWeek, plan, putNight, setNight } from '../lib/plan.svelte'
   import { app } from '../lib/state.svelte'
   import type { Day } from '../lib/types'
@@ -26,7 +26,7 @@
   const thisWeek = $derived(weekStart(today(), startDay))
   const nextWeek = $derived(weekStart(addDays(thisWeek, weekDays(thisWeek).length), startDay))
   const freeIn = (start: Day) => weekDays(start).filter((d) => d >= today() && !(plan.weeks[start] ?? []).some((e) => e.date === d))
-  const target = $derived(freeIn(thisWeek).length ? { start: thisWeek, label: 'This week', nights: freeIn(thisWeek) } : { start: nextWeek, label: 'Next week', nights: freeIn(nextWeek) })
+  const target = $derived(freeIn(thisWeek).length ? { start: thisWeek, label: 'Next seven nights', nights: freeIn(thisWeek) } : { start: nextWeek, label: 'The seven after', nights: freeIn(nextWeek) })
 
   $effect(() => {
     if (!open) return
@@ -46,7 +46,7 @@
         putNight(start, date, entry)
         if (pending) void api.matchNight(date).then((r) => r.entry && putNight(start, date, r.entry)).catch(() => undefined)
       }
-      done = `On ${weekdayName(date)}${start === thisWeek ? '' : ' next week'}.`
+      done = `On ${weekdayName(date)} ${shortDate(date)}.`
       open = false
     } catch (e) {
       error = e instanceof Error ? e.message : String(e)
@@ -68,7 +68,7 @@
         <button type="button" class={`night day-${weekdayIndex(d)}`} disabled={busy} aria-label={`Plan ${label} on ${weekdayName(d)}`} onclick={() => void put(d)}>{weekdayName(d)}</button>
       {/each}
     {:else}
-      <span class="muted">No free nights this week or next.</span>
+      <span class="muted">No free nights in the next two weeks.</span>
     {/if}
   </span>
   {#if error}<span class="error small" role="alert">{error}</span>{/if}

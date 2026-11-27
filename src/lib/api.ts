@@ -187,8 +187,8 @@ export const api = {
     return request(`/planner/wants/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
 
-  week(start: Day, options?: RequestOptions): Promise<Ok & { week: Week }> {
-    return request(`/planner/week?start=${encodeURIComponent(start)}`, {}, options)
+  week(start: Day, options?: RequestOptions & { days?: number }): Promise<Ok & { week: Week }> {
+    return request(`/planner/week?start=${encodeURIComponent(start)}&days=${options?.days ?? 7}`, {}, options)
   },
 
   setNight(
@@ -290,6 +290,15 @@ export const api = {
 
   snooze(mealId: string, today: Day, days = 21): Promise<Ok & { until: Day | null }> {
     return request(`/planner/meals/${encodeURIComponent(mealId)}/snooze`, { method: 'PUT', body: { today, days } })
+  },
+
+  shoppingLists(): Promise<Ok & { lists: { from: Day; to: Day }[] }> {
+    return request('/planner/shopping/lists')
+  },
+
+  /** The nights a list shops for. */
+  setShoppingRange(week: Day, to: Day): Promise<Ok & ShoppingWeek> {
+    return request('/planner/shopping/range', { method: 'PUT', body: { week, to } })
   },
 
   shopping(week: Day, options?: RequestOptions): Promise<Ok & ShoppingWeek> {

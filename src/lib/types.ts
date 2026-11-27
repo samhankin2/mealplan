@@ -167,6 +167,7 @@ export interface ShoppingItem {
 
 export interface ShoppingWeek {
   week: Day
+  to: Day // the last night it shops for
   items: ShoppingItem[]
   nights: { entryId: string; date: Day; dishId: string; optionIds: string[] }[] // meal nights to shop for
   usual: Record<string, { name: string; qty: string | null }[]> // what each meal needed last time

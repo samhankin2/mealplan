@@ -1,6 +1,6 @@
 import { api, ApiError } from './api'
 import { getToken, setToken } from './auth'
-import { isDay, today } from './dates'
+import { addDays, isDay, today } from './dates'
 import { weeks } from './weeks.svelte'
 import type { Day, Household, User } from './types'
 
@@ -37,9 +37,10 @@ function parseHash(hash: string): Route {
   if (parts[0] === 'rate') return { name: 'rate' }
   if (parts[0] === 'review') return { name: 'review' }
   if (parts[0] === 'freezer') return { name: 'freezer' }
-  if (parts[0] === 'shop') return { name: 'shop', week: parts[1] && isDay(parts[1]) ? parts[1] : today() } // no week: this week
+  if (parts[0] === 'shop') return { name: 'shop', week: parts[1] && isDay(parts[1]) ? parts[1] : '' } // no date: the list we're on
   // The week view snaps this to the household's week start (it knows the setting; the hash doesn't).
-  const start = parts[0] === 'week' && parts[1] && isDay(parts[1]) ? parts[1] : today()
+  // The rolling plan: from a couple of nights back, unless a date is asked for.
+  const start = parts[0] === 'week' && parts[1] && isDay(parts[1]) ? parts[1] : addDays(today(), -2)
   return { name: 'week', start }
 }
 

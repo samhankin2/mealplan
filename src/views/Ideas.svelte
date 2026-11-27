@@ -109,11 +109,11 @@
   <header class="head">
     <div>
       <h1 id="ideas-title">Ideas</h1>
-      <p class="muted range">For {isThisWeek ? 'this week' : weekLabel(start)}{isThisWeek ? `, ${weekLabel(start)}` : ''}</p>
+      <p class="muted range">For {isThisWeek ? 'the next seven nights' : weekLabel(start)}{isThisWeek ? `, ${weekLabel(start)}` : ''}</p>
     </div>
     <nav class="pager" aria-label="Weeks">
-      <a class="btn btn-icon" href={`#/ideas/${previousWeek(start, startDay)}`} aria-label="Previous week"><Chevron dir="left" /></a>
-      <a class="btn btn-icon" href={`#/ideas/${addDays(start, 7)}`} aria-label="Next week"><Chevron /></a>
+      <a class="btn btn-icon" href={`#/ideas/${previousWeek(start, startDay)}`} aria-label="A week earlier"><Chevron dir="left" /></a>
+      <a class="btn btn-icon" href={`#/ideas/${addDays(start, 7)}`} aria-label="A week later"><Chevron /></a>
     </nav>
   </header>
 
@@ -121,7 +121,7 @@
     {#if freeNights.length}
       Free nights: {freeNights.map((d) => weekdayName(d)).join(', ')}.
     {:else}
-      Every night this week is planned. <a href={`#/ideas/${addDays(start, 7)}`}>Next week</a>
+      These seven nights are all planned. <a href={`#/ideas/${addDays(start, 7)}`}>The seven after</a>
     {/if}
   </p>
 

@@ -9,13 +9,15 @@ export const plan = $state({
 })
 
 let current: Day | null = null
+const lengths: Record<Day, number> = {} // how many nights each loaded run holds
 
-export async function loadWeek(start: Day): Promise<void> {
+export async function loadWeek(start: Day, days = lengths[start] ?? 7): Promise<void> {
   current = start
+  lengths[start] = days
   plan.loading = true
   plan.error = ''
   try {
-    const { week } = await api.week(start)
+    const { week } = await api.week(start, { days })
     plan.weeks[start] = week.entries
   } catch (e) {
     plan.error = e instanceof Error ? e.message : String(e)
