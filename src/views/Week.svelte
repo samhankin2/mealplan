@@ -10,16 +10,20 @@
   import { copyWeek, describe, entryFor, loadWeek, moveNight, plan, putNight } from '../lib/plan.svelte'
   import { freezer, loadFreezer, loadReview, review } from '../lib/review.svelte'
   import { app } from '../lib/state.svelte'
+  import { currentPlan, loadPlans, planHolding, plans, setPlanNights, startPlan } from '../lib/plans.svelte'
   import type { Day, PlanEntry } from '../lib/types'
 
   let { start: requested }: { start: Day } = $props()
 
-  // The rolling plan: a run of nights from a couple back, no fixed weeks. Arrows move it a week.
-  const NIGHTS = 16
-  const start = $derived(requested)
-  const days = $derived(weekDays(start, NIGHTS))
+  // The plan: started whenever we chose, as many nights as we said. No date: the current (newest) one.
   const todayDay = today()
-  const showsToday = $derived(days.includes(todayDay))
+  const run = $derived(requested ? (plans.list.find((p) => p.start === requested) ?? planHolding(requested)) : currentPlan())
+  const start = $derived(run?.start ?? todayDay)
+  const days = $derived(run ? weekDays(run.start, run.nights) : [])
+  const at = $derived(run ? plans.list.findIndex((p) => p.id === run.id) : -1)
+  const older = $derived(at >= 0 ? plans.list[at + 1] : undefined)
+  const newer = $derived(at > 0 ? plans.list[at - 1] : undefined)
+  const isCurrent = $derived(at === 0)
   const others = $derived(app.household?.members.filter((m) => !m.me) ?? [])
   const entries = $derived(plan.weeks[start] ?? [])
   const planned = $derived(entries.length)
@@ -31,7 +35,14 @@
 
   $effect(() => {
     void loadMeals()
-    void loadWeek(start, NIGHTS)
+  })
+  // Plans may have changed on the other phone: fetch them whenever we look at one.
+  $effect(() => {
+    void requested
+    void loadPlans()
+  })
+  $effect(() => {
+    if (run) void loadWeek(run.start, run.nights)
   })
   $effect(() => {
     void loadReview()
@@ -39,21 +50,50 @@
   })
   const frozenPortions = $derived(freezer.items.reduce((n, f) => n + f.portions, 0))
 
-  // Free nights in the coming seven (what Ideas offers to fill).
-  const nextSeven = $derived(weekDays(todayDay))
-  const freeNights = $derived(nextSeven.filter((d) => !entries.some((e) => e.date === d)))
-  // The balance of the coming seven nights.
-  const balance = $derived(weekBalance(entries.filter((e) => nextSeven.includes(e.date)), meals.list))
+  // Free nights in the plan from today (what Ideas offers to fill), and the plan's balance.
+  const freeNights = $derived(days.filter((d) => d >= todayDay && !entries.some((e) => e.date === d)))
+  const balance = $derived(weekBalance(entries.filter((e) => days.includes(e.date)), meals.list))
   const repeatsText = $derived(balance.repeats.length ? `${balance.repeats.join(' and ')} twice` : 'no repeats')
 
   async function copyLast(): Promise<void> {
     busy = true
     notice = ''
     try {
-      // The last seven nights again, onto the next seven (empty nights only).
-      const copied = await copyWeek(addDays(todayDay, -7), todayDay)
-      await loadWeek(start, NIGHTS)
-      notice = copied ? `Copied ${copied} night${copied === 1 ? '' : 's'} from the last seven.` : 'Nothing to copy: the last seven nights were empty, or the next seven are planned.'
+      // The plan before, night for night, onto this one's empty nights.
+      if (!run || !older) return
+      const copied = await copyWeek(older.start, run.start)
+      await loadWeek(run.start, run.nights)
+      notice = copied ? `Copied ${copied} night${copied === 1 ? '' : 's'} from the last plan.` : 'Nothing to copy: the last plan was empty, or these nights are planned.'
+    } catch (e) {
+      notice = e instanceof Error ? e.message : String(e)
+    } finally {
+      busy = false
+    }
+  }
+
+  // Start a new plan on any night: from yesterday to two weeks ahead.
+  let choosing = $state(false)
+  const choices = $derived(weekDays(addDays(todayDay, -1), 16))
+  const suggested = $derived(run ? addDays(run.end, 1) : todayDay)
+  async function beginPlan(day: Day): Promise<void> {
+    busy = true
+    notice = ''
+    try {
+      await startPlan(day)
+      choosing = false
+      if (requested) location.hash = '#/week'
+    } catch (e) {
+      notice = e instanceof Error ? e.message : String(e)
+    } finally {
+      busy = false
+    }
+  }
+  async function resize(by: number): Promise<void> {
+    if (!run) return
+    busy = true
+    try {
+      const p = await setPlanNights(run.id, run.nights + by)
+      await loadWeek(p.start, p.nights)
     } catch (e) {
       notice = e instanceof Error ? e.message : String(e)
     } finally {
@@ -292,15 +332,19 @@
 <section aria-labelledby="week-title">
   <header class="week-head">
     <div>
-      <h1 id="week-title">{showsToday ? 'The plan' : rangeLabel(days[0], days.at(-1) ?? start)}</h1>
-      <p class="muted range">
-        {#if showsToday}{rangeLabel(days[0], days.at(-1) ?? start)}{:else}<a href="#/week">Back to today</a>{/if}
-      </p>
+      <h1 id="week-title">{run ? (isCurrent ? 'The plan' : 'An earlier plan') : 'No plan yet'}</h1>
+      {#if run}
+        <p class="muted range">
+          {rangeLabel(run.start, run.end)}, {run.nights} night{run.nights === 1 ? '' : 's'}{#if !isCurrent}. <a href="#/week">The current plan</a>{/if}
+        </p>
+      {/if}
     </div>
-    <nav class="pager" aria-label="Move the plan">
-      <a class="btn btn-icon" href={`#/week/${addDays(start, -7)}`} aria-label="A week earlier"><Chevron dir="left" /></a>
-      <a class="btn btn-icon" href={`#/week/${addDays(start, 7)}`} aria-label="A week later"><Chevron /></a>
-    </nav>
+    {#if older || newer}
+      <nav class="pager" aria-label="Plans">
+        {#if older}<a class="btn btn-icon" href={`#/week/${older.start}`} aria-label="Earlier plan"><Chevron dir="left" /></a>{/if}
+        {#if newer}<a class="btn btn-icon" href={`#/week/${newer.start}`} aria-label="Later plan"><Chevron /></a>{/if}
+      </nav>
+    {/if}
   </header>
 
   {#if others.length === 0}
@@ -308,7 +352,23 @@
   {/if}
   {#if plan.error}<p class="error" role="alert">{plan.error}</p>{/if}
 
-  <ol class="days" class:dragging={Boolean(drag)} aria-label={`The plan, ${planned} nights planned`}>
+  {#if !run || choosing}
+    <section class="starter" aria-labelledby="start-title">
+      <h2 id="start-title">{run ? 'Start a new plan' : 'Start a plan'}: which night first?</h2>
+      <div class="choices" role="group" aria-label="First night">
+        {#each choices as d (d)}
+          <button type="button" class={`choice day-${weekdayIndex(d)}`} class:suggested={d === suggested} disabled={busy} aria-label={`Start the plan on ${weekdayName(d)} ${shortDate(d)}`} onclick={() => void beginPlan(d)}>
+            <span class="weekday">{weekdayName(d)}</span><span class="num">{d === todayDay ? 'Today' : shortDate(d)}</span>
+          </button>
+        {/each}
+      </div>
+      <p class="muted small">Seven nights to begin with; add or drop nights after. {#if run}This plan ends the night before.{/if}</p>
+      {#if run}<button type="button" class="link" onclick={() => (choosing = false)}>Cancel</button>{/if}
+    </section>
+  {/if}
+
+  {#if run}
+  <ol class="days" class:dragging={Boolean(drag)} aria-label={`The plan, ${planned} of ${days.length} nights planned`}>
     {#each days as day (day)}
       {@const entry = entryFor(start, day)}
       {@const detail = lineDetail(entry)}
@@ -381,23 +441,29 @@
   </ol>
 
   {#if notice}<p class="notice muted" role="status">{notice}</p>{/if}
+  <p class="plan-acts">
+    <button type="button" class="link" disabled={busy || run.nights >= 28} onclick={() => void resize(1)}>One more night</button>
+    <button type="button" class="link" disabled={busy || run.nights <= 1} onclick={() => void resize(-1)}>One night fewer</button>
+    {#if !choosing}<button type="button" class="link strong" onclick={() => (choosing = true)}>Start a new plan</button>{/if}
+  </p>
   <p class="balance muted">
-    {#if planned}<span aria-label="Week balance">{balance.veggie} veggie, {balance.fresh} new, {repeatsText}.</span>{/if}
-    <button type="button" class="link" disabled={busy} onclick={() => void copyLast()}>Copy last week</button>
-    <button type="button" class="link" onclick={() => (typing = true)}>Paste a week</button>
+    {#if planned}<span aria-label="Plan balance">{balance.veggie} veggie, {balance.fresh} new, {repeatsText}.</span>{/if}
+    {#if older}<button type="button" class="link" disabled={busy} onclick={() => void copyLast()}>Copy last plan</button>{/if}
+    <button type="button" class="link" onclick={() => (typing = true)}>Paste a plan</button>
   </p>
 
   {#if freeNights.length}
-    <a class="ideas-link" href="#/ideas">{freeNights.length} free night{freeNights.length === 1 ? '' : 's'} in the next seven: see ideas</a>
+    <a class="ideas-link" href={isCurrent ? '#/ideas' : `#/ideas/${run.start}`}>{freeNights.length} free night{freeNights.length === 1 ? '' : 's'}: see ideas</a>
   {/if}
 
   <div class="more">
-    <a class="btn shop-link" href="#/shop">Shopping list</a>
+    <a class="btn shop-link" href={`#/shop/${run.start}`}>Shopping list</a>
     <a class="freezer-link" href="#/freezer">Freezer{frozenPortions ? `: ${frozenPortions} portion${frozenPortions === 1 ? '' : 's'}` : ''}</a>
     {#if review.pending > 0}
       <a class="review-link" href="#/review">Review last week ({review.pending})</a>
     {/if}
   </div>
+  {/if}
 </section>
 
 {#if drag}
@@ -415,7 +481,7 @@
   <NightSheet {start} date={open} entry={entryFor(start, open)} onclose={() => (open = null)} />
 {/if}
 {#if typing}
-  <TypeWeekSheet start={start > todayDay ? start : todayDay} onclose={() => ((typing = false), void loadWeek(start, NIGHTS))} />
+  <TypeWeekSheet start={start > todayDay ? start : todayDay} onclose={() => ((typing = false), run && void loadWeek(run.start, run.nights))} />
 {/if}
 
 <style>
@@ -432,6 +498,54 @@
     opacity: 0.6;
   }
   .today .num {
+    font-weight: 750;
+  }
+  .starter {
+    display: grid;
+    gap: 0.6rem;
+    margin: 0 0 1rem;
+    padding: 0.9rem 1rem;
+    border-radius: var(--r-row);
+    border: 1px solid var(--rule);
+    background: var(--plate);
+  }
+  .starter h2 {
+    font-size: var(--s1);
+  }
+  .choices {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.3rem;
+  }
+  .choice {
+    display: grid;
+    justify-items: center;
+    gap: 0.1rem;
+    padding: 0.45rem 0;
+    border-radius: var(--r-row);
+    border: 1px solid var(--rule-strong);
+    border-top: 4px solid var(--day);
+    background: transparent;
+    color: var(--plum);
+    font: inherit;
+    cursor: pointer;
+  }
+  .choice.suggested {
+    background: color-mix(in srgb, var(--day) var(--tint), var(--plate));
+    border-color: var(--day);
+  }
+  .choice .weekday {
+    font-size: var(--s0);
+    color: var(--plum);
+  }
+  .plan-acts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 1rem;
+    margin: 0.6rem 0 0;
+    font-size: var(--s-1);
+  }
+  .link.strong {
     font-weight: 750;
   }
   .range {

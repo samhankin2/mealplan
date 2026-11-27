@@ -3,9 +3,8 @@
    * Ideas, in full: why each meal is suggested, how each of us rates it, when
    * we last had it, and a button for each free night to plan it there.
    */
-  import Chevron from '../components/Chevron.svelte'
   import { api } from '../lib/api'
-  import { addDays, previousWeek, shortDate, today, weekDays, weekdayIndex, weekdayName, weekLabel, weekStart } from '../lib/dates'
+  import { rangeLabel, shortDate, today, weekDays, weekdayIndex, weekdayName } from '../lib/dates'
   import { loadMeals, meals } from '../lib/meals.svelte'
   import { loadWeek, plan, setNight } from '../lib/plan.svelte'
   import { freezer, loadFreezer } from '../lib/review.svelte'
@@ -14,20 +13,24 @@
   import { loadWants, wants } from '../lib/wants.svelte'
   import { history, loadHistory, notNow } from '../lib/suggestions.svelte'
   import type { Day } from '../lib/types'
+  import { currentPlan, loadPlans, planHolding, plans } from '../lib/plans.svelte'
 
   let { start: requested }: { start: Day } = $props()
 
-  const startDay = $derived(app.household?.weekStartDay ?? 0)
-  const start = $derived(weekStart(requested, startDay))
-  const days = $derived(weekDays(start))
-  const isThisWeek = $derived(start === weekStart(today(), startDay))
+  // For a plan: the current one, or the one asked for. No plan yet: the next seven nights.
   const todayDay = today()
+  const run = $derived(requested ? (plans.list.find((p) => p.start === requested) ?? planHolding(requested)) : currentPlan())
+  const start = $derived(run?.start ?? todayDay)
+  const days = $derived(run ? weekDays(run.start, run.nights) : weekDays(todayDay))
   const entries = $derived(plan.weeks[start] ?? [])
   const freeNights = $derived(days.filter((d) => d >= todayDay && !entries.some((e) => e.date === d)))
 
   $effect(() => {
     void loadMeals()
-    void loadWeek(start)
+    void loadPlans()
+  })
+  $effect(() => {
+    void loadWeek(start, days.length)
     void loadFreezer()
     void loadHistory()
     void loadWants()
@@ -109,19 +112,15 @@
   <header class="head">
     <div>
       <h1 id="ideas-title">Ideas</h1>
-      <p class="muted range">For {isThisWeek ? 'the next seven nights' : weekLabel(start)}{isThisWeek ? `, ${weekLabel(start)}` : ''}</p>
+      <p class="muted range">{run ? `For the plan, ${rangeLabel(run.start, run.end)}` : 'No plan yet: for the next seven nights'}</p>
     </div>
-    <nav class="pager" aria-label="Weeks">
-      <a class="btn btn-icon" href={`#/ideas/${previousWeek(start, startDay)}`} aria-label="A week earlier"><Chevron dir="left" /></a>
-      <a class="btn btn-icon" href={`#/ideas/${addDays(start, 7)}`} aria-label="A week later"><Chevron /></a>
-    </nav>
   </header>
 
   <p class="free">
     {#if freeNights.length}
       Free nights: {freeNights.map((d) => weekdayName(d)).join(', ')}.
     {:else}
-      These seven nights are all planned. <a href={`#/ideas/${addDays(start, 7)}`}>The seven after</a>
+      Every night of the plan is planned. <a href="#/week">Add a night or start a new plan</a>
     {/if}
   </p>
 
@@ -183,14 +182,6 @@
   }
   .range {
     margin: 0.2rem 0 0;
-  }
-  .pager {
-    display: flex;
-    gap: 0.4rem;
-  }
-  .pager .btn {
-    border-width: 1px;
-    border-color: var(--rule-strong);
   }
   .free {
     margin: 0 0 0.75rem;

@@ -1,6 +1,6 @@
 import { api, ApiError } from './api'
 import { getToken, setToken } from './auth'
-import { addDays, isDay, today } from './dates'
+import { isDay } from './dates'
 import { weeks } from './weeks.svelte'
 import type { Day, Household, User } from './types'
 
@@ -31,7 +31,7 @@ function parseHash(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean)
   if (parts[0] === 'settings') return { name: 'settings' }
   if (parts[0] === 'want') return { name: 'want' }
-  if (parts[0] === 'ideas') return { name: 'ideas', start: parts[1] && isDay(parts[1]) ? parts[1] : today() }
+  if (parts[0] === 'ideas') return { name: 'ideas', start: parts[1] && isDay(parts[1]) ? parts[1] : '' }
   if (parts[0] === 'meals' && parts[1]) return { name: 'meal', id: decodeURIComponent(parts[1]) }
   if (parts[0] === 'meals') return { name: 'meals' }
   if (parts[0] === 'rate') return { name: 'rate' }
@@ -39,8 +39,8 @@ function parseHash(hash: string): Route {
   if (parts[0] === 'freezer') return { name: 'freezer' }
   if (parts[0] === 'shop') return { name: 'shop', week: parts[1] && isDay(parts[1]) ? parts[1] : '' } // no date: the list we're on
   // The week view snaps this to the household's week start (it knows the setting; the hash doesn't).
-  // The rolling plan: from a couple of nights back, unless a date is asked for.
-  const start = parts[0] === 'week' && parts[1] && isDay(parts[1]) ? parts[1] : addDays(today(), -2)
+  // No date: the current plan. A date: the plan holding that night.
+  const start = parts[0] === 'week' && parts[1] && isDay(parts[1]) ? parts[1] : ''
   return { name: 'week', start }
 }
 

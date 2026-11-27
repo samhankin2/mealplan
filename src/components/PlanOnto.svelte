@@ -5,9 +5,9 @@
    * like typing it on the week, and the meal is found behind.
    */
   import { api } from '../lib/api'
-  import { addDays, shortDate, today, weekDays, weekdayIndex, weekdayName, weekStart } from '../lib/dates'
+  import { shortDate, today, weekDays, weekdayIndex, weekdayName } from '../lib/dates'
   import { loadWeek, plan, putNight, setNight } from '../lib/plan.svelte'
-  import { app } from '../lib/state.svelte'
+  import { currentPlan, loadPlans } from '../lib/plans.svelte'
   import type { Day } from '../lib/types'
 
   let {
@@ -22,16 +22,18 @@
   let done = $state('')
   let error = $state('')
 
-  const startDay = $derived(app.household?.weekStartDay ?? 0)
-  const thisWeek = $derived(weekStart(today(), startDay))
-  const nextWeek = $derived(weekStart(addDays(thisWeek, weekDays(thisWeek).length), startDay))
-  const freeIn = (start: Day) => weekDays(start).filter((d) => d >= today() && !(plan.weeks[start] ?? []).some((e) => e.date === d))
-  const target = $derived(freeIn(thisWeek).length ? { start: thisWeek, label: 'Next seven nights', nights: freeIn(thisWeek) } : { start: nextWeek, label: 'The seven after', nights: freeIn(nextWeek) })
+  // The current plan's free nights from today.
+  const run = $derived(currentPlan())
+  const target = $derived(
+    run
+      ? { start: run.start, label: 'The plan', nights: weekDays(run.start, run.nights).filter((d) => d >= today() && !(plan.weeks[run.start] ?? []).some((e) => e.date === d)) }
+      : { start: today(), label: '', nights: [] as Day[] },
+  )
 
   $effect(() => {
     if (!open) return
-    void loadWeek(thisWeek)
-    void loadWeek(nextWeek)
+    void loadPlans()
+    if (run) void loadWeek(run.start, run.nights)
   })
 
   async function put(date: Day): Promise<void> {
@@ -68,7 +70,7 @@
         <button type="button" class={`night day-${weekdayIndex(d)}`} disabled={busy} aria-label={`Plan ${label} on ${weekdayName(d)}`} onclick={() => void put(d)}>{weekdayName(d)}</button>
       {/each}
     {:else}
-      <span class="muted">No free nights in the next two weeks.</span>
+      <span class="muted">{run ? "Every night of the plan is planned." : "No plan yet."} <a href="#/week">Plan</a></span>
     {/if}
   </span>
   {#if error}<span class="error small" role="alert">{error}</span>{/if}

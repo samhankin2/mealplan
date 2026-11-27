@@ -165,6 +165,14 @@ export interface ShoppingItem {
   updatedAt: string
 }
 
+/** A meal plan: started on any night, `nights` long; the newest is the current one. */
+export interface MealPlanRun {
+  id: string
+  start: Day
+  nights: number
+  end: Day
+}
+
 export interface ShoppingWeek {
   week: Day
   to: Day // the last night it shops for

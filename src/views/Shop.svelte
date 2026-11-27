@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { addDays, daysBetween, rangeLabel, shortDate, today, weekdayIndex, weekdayName } from '../lib/dates'
-  import { api } from '../lib/api'
+  import { daysBetween, rangeLabel, shortDate, today, weekdayIndex, weekdayName } from '../lib/dates'
+  import { currentPlan, loadPlans } from '../lib/plans.svelte'
   import { loadMeals, meals } from '../lib/meals.svelte'
   import {
     SECTION_NAMES,
@@ -29,14 +29,9 @@
       resolved = asked
       return
     }
-    void api
-      .shoppingLists()
-      .then(({ lists }) => {
-        const t = today()
-        const current = lists.find((l) => l.from <= t && t <= l.to)
-        const upcoming = lists.filter((l) => l.from > t).at(-1)
-        resolved = current?.from ?? upcoming?.from ?? t
-      })
+    // The current plan's list (it runs for the plan's nights).
+    void loadPlans()
+      .then(() => (resolved = currentPlan()?.start ?? today()))
       .catch(() => (resolved = today()))
   })
   const week = $derived(resolved)
@@ -66,17 +61,6 @@
   })
 
   const data = $derived(shop.data && shop.data.week === week ? shop.data : null)
-
-  /** Which nights this list shops for: a night fewer or one more. */
-  async function setRange(to: Day): Promise<void> {
-    error = ''
-    try {
-      await api.setShoppingRange(week, to)
-      await loadShop(week)
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e)
-    }
-  }
   const nights = $derived(data?.nights ?? [])
   const steps = $derived(nights.length + 1) // every meal night, then extras
   const night = $derived(step < nights.length ? nights[step] : null)
@@ -146,17 +130,7 @@
 {#if data}
   {@const count = daysBetween(week, data.to) + 1}
   <div class="range">
-    <p class="sub">Shopping for <strong>{rangeLabel(week, data.to)}</strong> <span class="muted">({count} night{count === 1 ? '' : 's'})</span></p>
-    <div class="range-acts">
-      <button type="button" class="link" disabled={count <= 1} onclick={() => void setRange(addDays(data.to, -1))}>One night fewer</button>
-      <button type="button" class="link" disabled={count >= 21} onclick={() => void setRange(addDays(data.to, 1))}>One more night</button>
-      <a class="link" href={`#/shop/${addDays(data.to, 1)}`}>Next list</a>
-      {#if data.items.length === 0}
-        <!-- Nothing on it yet: it can still start on another night. -->
-        <a class="link" href={`#/shop/${addDays(week, -1)}`}>Start a night earlier</a>
-        <a class="link" href={`#/shop/${addDays(week, 1)}`}>Start a night later</a>
-      {/if}
-    </div>
+    <p class="sub">For the plan, <strong>{rangeLabel(week, data.to)}</strong> <span class="muted">({count} night{count === 1 ? '' : 's'})</span></p>
   </div>
 {/if}
 
@@ -528,25 +502,5 @@
   }
   .range .sub {
     margin: 0 0 0.25rem;
-  }
-  .range-acts {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem 1rem;
-    font-size: var(--s-1);
-  }
-  .range-acts .link {
-    border: 0;
-    background: none;
-    padding: 0;
-    color: var(--plum);
-    font: inherit;
-    font-weight: 650;
-    text-decoration: underline;
-    cursor: pointer;
-  }
-  .range-acts .link:disabled {
-    color: var(--rule-strong);
-    cursor: default;
   }
 </style>

@@ -1,5 +1,5 @@
 import { getToken } from './auth'
-import type { Day, FreezerItem, Household, Meal, MealNote, NightKind, ParsedNight, Partner, PlanEntry, RatedAs, Rating, ReviewEntry, Section, ShoppingItem, ShoppingWeek, User, WantLevel, WantLine, Week } from './types'
+import type { Day, MealPlanRun, FreezerItem, Household, Meal, MealNote, NightKind, ParsedNight, Partner, PlanEntry, RatedAs, Rating, ReviewEntry, Section, ShoppingItem, ShoppingWeek, User, WantLevel, WantLine, Week } from './types'
 
 declare global {
   interface Window {
@@ -290,6 +290,19 @@ export const api = {
 
   snooze(mealId: string, today: Day, days = 21): Promise<Ok & { until: Day | null }> {
     return request(`/planner/meals/${encodeURIComponent(mealId)}/snooze`, { method: 'PUT', body: { today, days } })
+  },
+
+  plans(): Promise<Ok & { plans: MealPlanRun[] }> {
+    return request('/planner/plans')
+  },
+
+  /** Start a meal plan on any night. */
+  startPlan(start: Day, nights = 7): Promise<Ok & { plan: MealPlanRun; plans: MealPlanRun[] }> {
+    return request('/planner/plans', { method: 'POST', body: { start, nights } })
+  },
+
+  setPlanNights(id: string, nights: number): Promise<Ok & { plan: MealPlanRun; plans: MealPlanRun[] }> {
+    return request(`/planner/plans/${encodeURIComponent(id)}`, { method: 'PUT', body: { nights } })
   },
 
   shoppingLists(): Promise<Ok & { lists: { from: Day; to: Day }[] }> {
